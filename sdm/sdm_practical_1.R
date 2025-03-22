@@ -1,5 +1,6 @@
 # libraries ----
 library(biomod2) # V.4.2-4
+library(mgcv)
 library(ade4) # V.1.7-22
 library(MASS) # V.7.3-60
 library(gridExtra) # V.2.3
@@ -15,7 +16,7 @@ library(gam) # V.1.22-2
 library(ecospat) # V.4.0.0
 library(sf) # V.1.0-14
 library(viridis) # V.0.6.4
-library(mgcv)
+
 options(warn=-1) ### to remove warnings within the PDF
 
 # load data, select predictors ----
@@ -324,25 +325,31 @@ print(resp.rf)
 # create GAM model using stepwise selection of variables----
 ?step.Gam
 ?predict.Gam
-library(gam)
 
-# Start with a minimal GAM model including one predictor
-gamStart <- gam(Veronica_chamaedrys ~ s(bio15), data = spData, family = binomial)
+data("ecospat.testData")
+spObs <- ecospat.testData[,c("long","lat","Veronica_chamaedrys")]
+#get all file names in the folder
+raster_files <- mixedsort(list.files(path = "sdm/data_tp1/covariates",
+                                     pattern="bio",
+                                     full.names=TRUE))
 
-# Start with a minimal model with all the predictors
-gamModel <- gam(Veronica_chamaedrys ~ s(bio15) + s(bio6) + s(bio7), data = spData, family = binomial)
+bioclim<-rast(raster_files)
 
-# Perform stepwise selection with proper scope formatting
-gamModAIC <- step.Gam(
-  gamStart, gamModel,
-  direction = "both", 
-  trace = TRUE
-)
+names(bioclim)=sub("_.*","",names(bioclim))
+coord<-spObs[,1:2]
+coord<-sf_project(from=st_crs("EPSG:21781"),to= st_crs("EPSG:2056"),pts=coord)
 
-gamModAIC <- step.Gam(gamStart, 
-                      scope = list(upper = gamModel), 
-                      direction = "both", trace = TRUE)
+spData<-na.omit(data.frame(coord,
+                           Veronica_chamaedrys=spObs$Veronica_chamaedrys,
+                           extract(bioclim,coord)))
+nrow(spData)
 
+unloadNamespace("mgcv")
+gamStart<-gam::gam(Veronica_chamaedrys~1,data=spData,family=binomial)
+gam_df2<-gam::step.Gam(gamStart,list(~1 + gam::s(bio7,2),~1 + gam::s(bio6,2),~1 + gam::s(bio15,2)),
+                  trace=T,direction="both")
+gam_df2$anova
 
-
-
+gam::step.Gam
+View(spData)
+str(spData)
