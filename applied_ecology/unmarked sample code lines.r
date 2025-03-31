@@ -10,7 +10,7 @@ mallardUMF<-unmarkedFramePCount(y=mallard.y, siteCovs=mallard.site,obsCovs=malla
 #summaries
 summary(mallardUMF)
 names(mallard.site)
-#build a few models …
+#build a few models ?
 (null <- pcount(~1~1, mallardUMF))
 (elev<- pcount(~1~elev, mallardUMF))
 (date<- pcount(~date~1, mallardUMF))
@@ -43,8 +43,35 @@ minkFrog <- unmarkedFramePCount(y = minkFrogData[,1:5], siteCovs = minkFrogData[
 summary(minkFrog)
 plot(minkFrog)
 
+
 #Questions:
-#Try building several modelswith different detectability and habitat quality covariates (using sensible biological assumptions). What is the best model you can build (lowest AIC)?
+#Try building several models with different detectability and habitat quality covariates (using sensible biological assumptions). What is the best model you can build (lowest AIC)?
 #How does precipitation during the surveys affect detectability?
 #How does distance to road affect abundance?
 #What's the total abundance of Mink Frog in the study system?
+
+(null <- pcount(~1~1, minkFrog))
+summary(null)
+(precip<- pcount(~precip~1, minkFrog))
+summary(precip)
+(roadDist<- pcount(~1~roadDist, minkFrog))
+summary(roadDist)
+(pondArea <- pcount(~1~pondArea, minkFrog))
+summary(pondArea)
+(habitat <- pcount(~1~habitat, minkFrog))
+(global <- pcount(~precip ~roadDist+pondArea+habitat, minkFrog))
+(nopond <- pcount(~precip ~roadDist+habitat, minkFrog))
+
+fits1 <- fitList(null=null, precip=precip, roadDist=roadDist, pondArea=pondArea, global=global, nopond = nopond)
+(ms1 <- modSel(fits1, nullmod='null'))
+
+par(mfrow = c(1,3))
+beta1 <- coef(global)
+plot(function(x) plogis(beta1[1] + beta1[2]*x), 1, 3, xlab="roadDist", ylab="Occupancy probability", ylim = c(0, 1))
+plot(function(x) plogis(beta1[1] + beta1[3]*x), -3, 3, xlab="pondArea", ylab="Occupancy probability", ylim = c(0, 1))
+plot(function(x) plogis(beta1[5] + beta1[6]*x), xlab="precipitation", ylab="Detection probability", ylim = c(0, 1))
+dev.off()
+
+
+
+
