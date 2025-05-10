@@ -1,5 +1,6 @@
 # think: which data to use for training and which for validation?
 
+# libraries ----
 library(biomod2)
 library(terra)
 library(ecospat)
@@ -160,15 +161,16 @@ boyceplot <- ecospat.boyce(fit = EvalData$GLM, obs, nclass = 0,
                            window.w = "default", res = 100, PEplot = T)
 boyceplot$cor
 abline(a=0,b=max(boyceplot$F.ratio))
-
-# validation and stuff - i didnt understand much..
+ 
+# validation and stuff - i didnt understand much.. ----
 Vero_chama<-data.frame(bio7=spData$bio7,
                        bio6=spData$bio6,
                        bio15=spData$bio15,
                        Veronica_chamaedrys=spData$Veronica_chamaedrys)
 Vero_chama$Veronica_chamaedrys<-as.factor(Vero_chama$Veronica_chamaedrys)
 
- # example w glm - what degree polynomial to choose
+# K FOLD CROSS VALIDATION example w glm - what degree polynomial to choose
+
 set.seed(123)
 cv.error.10<-rep(0,10)
 for(i in 1:10){
@@ -178,6 +180,7 @@ for(i in 1:10){
   cv.error.10[i]<-cv.glm(spData, glm.fit,K=10)$delta[1]
 }
 cv.error.10
+# adding complexity beyond degree 2 or 3 does not improve accuracy meaningfully.
 
 # example with rf model
 set.seed(123)
@@ -192,10 +195,123 @@ model <- train(Veronica_chamaedrys~ ., data = Vero_chama, trControl = train_cont
 # plot roc
 selectedIndices <- model$pred$mtry == 3
 ROC <- roc(as.numeric(model$pred$obs[selectedIndices]),
-           as.numeric(model$pred$X0[selectedIndiceS]), auc = TRUE)
+           as.numeric(model$pred$X0[selectedIndices]), auc = TRUE)
 confMat <- caret::confusionMatrix(data = model$pred$obs[selectedIndices],
                                   reference = model$pred$pred[selectedIndices],
                                   mode= "everything")
 confMat$overall
 par(mfrow=c(1,1))
 plot.roc(smooth(ROC))
+
+
+# other data partitioning methods ----
+Vero_chama$Veronica_chamaedrys <- make.names(Vero_chama$Veronica_chamaedrys)
+
+#-- Usual bootstrap
+train_control <- trainControl(method="boot", number=5, savePredictions=T,
+                              summaryFunction=twoClassSummary, classProbs=T)
+model.boot <- train(Veronica_chamaedrys ~ ., data=Vero_chama, trControl=train_control,
+                    method="rf")
+ROC.boot <- roc(as.numeric(model.boot$pred$obs[selectedIndices]),
+                as.numeric(model.boot$pred$X0[selectedIndices]), auc=TRUE)
+
+#-- the 0.632 bootstrap estimator (Efron 1983)
+train_control <- trainControl(method="boot632", number=5, savePredictions=T,
+                              summaryFunction=twoClassSummary,classProbs=T)
+model.boot632 <- train(Veronica_chamaedrys ~ ., data=Vero_chama,
+                       trControl=train_control, method="rf")
+ROC.boot632 <- roc(as.numeric(model.boot632$pred$obs[selectedIndices]),
+                   as.numeric(model.boot632$pred$X0[selectedIndices]), auc=TRUE)
+#-- optimism bootstrap estimator (Efron and Tibshirani, 1994)
+train_control <- trainControl(method="optimism_boot", number=5, savePredictions=T,
+                              summaryFunction=twoClassSummary,classProbs=T)
+model.boot.optim <- train(Veronica_chamaedrys ~ ., data=Vero_chama,
+                          trControl=train_control, method="rf")
+ROC.boot.optim <- roc(as.numeric(model.boot.optim$pred$obs[selectedIndices]),
+                      as.numeric(model.boot.optim$pred$X0[selectedIndices]),auc=TRUE)
+#-- 5-fold cross validation
+train_control <- trainControl(method="cv", number=5, savePredictions=T,
+                              summaryFunction=twoClassSummary, classProbs=T)
+model.cv <- train(Veronica_chamaedrys ~ ., data=Vero_chama, trControl=train_control,
+                  method="rf")
+ROC.cv <- roc(as.numeric(model.cv$pred$obs[selectedIndices]),
+              as.numeric(model.cv$pred$X0[selectedIndices]), auc=TRUE)
+#-- repeated split-sample CV where 75% of the data is used for calibrating and 25% for the evaluation
+# You can change the ratio with the parameter p
+train_control <- trainControl(method="LGOCV", number=5, savePredictions=T,
+                              summaryFunction=twoClassSummary, classProbs=T, p= 0.75)
+model.LGOCV <- train(Veronica_chamaedrys ~ ., data=Vero_chama, trControl=train_control,
+                     method="rf")
+ROC.LGOCV <- roc(as.numeric(model.LGOCV$pred$obs[selectedIndices]),
+                 as.numeric(model.LGOCV$pred$X0[selectedIndices]), auc=TRUE)
+
+#-- Plot the results
+plot.roc(smooth(ROC.boot),col=1)
+plot.roc(smooth(ROC.boot632),add=T,col=2)
+plot.roc(smooth(ROC.boot.optim),add=T,col=3)
+plot.roc(smooth(ROC.cv),add=T,col=4)
+plot.roc(smooth(ROC.LGOCV),add=T,col=5)
+legend("bottomright", c("boot","boot632","boot.optim","cv","LOGCV"),
+       col=1:5, lty=1, inset=0.01)
+
+# comparison of different algorithms----
+nCV <- 20 # number of cross validation
+nRow <- nrow(spData)
+Test_results <- as.data.frame(matrix(0,ncol=nCV,nrow=3,
+                                     dimnames=list(c("GLM","GAM","RF"),
+                                                   NULL)))
+# array to store predicted habitat suitability
+Pred_results <- array(0, c(nRow, 3, nCV),
+                      dimnames=list(seq(1:nRow),
+                                    c("GLM","GAM","RF"),
+                                    seq(1:nCV)))
+for(i in 1:nCV){
+  # separate the original data in one subset for calibration and another for evaluation.
+  a <- bm_SampleBinaryVector(obs = spData$Veronica_chamaedrys, ratio=0.7)
+  calib <- spData[a$calibration,]
+  eval <- spData[a$validation,]
+  ### GLM ###
+  glmStart <- glm(Veronica_chamaedrys~1, data=calib, family=binomial)
+  glm.formula <- bm_MakeFormula("Veronica_chamaedrys",
+                                spData[,c("bio7", "bio6", "bio15")],
+                                "quadratic", interaction.level=1)
+  glmModAIC <- stepAIC(glmStart, glm.formula, data = calib,
+                       direction = "both", trace = FALSE, k = 2,
+                       control=glm.control(maxit=100))
+  # prediction on the evaluation data and evaluation using the AUC approach
+  Pred_test <- predict(glmModAIC, eval, type="response")
+  Test_results["GLM",i] <- as.numeric(auc(roc(eval$Veronica_chamaedrys,Pred_test)))
+  # prediction on the total dataset
+  Pred_results[,"GLM",i] <- predict(glmModAIC, spData, type="response")
+  ### GAM ###
+  gam_mgcv <- gam(Veronica_chamaedrys ~ s(bio7) + s(bio6) + s(bio15),
+                  data=calib, family="binomial")
+  # prediction on the evaluation data and evaluation using the AUC approach
+  Pred_test <- predict(gam_mgcv, eval, type="response")
+  Test_results["GAM",i] <- as.numeric(auc(roc(eval$Veronica_chamaedrys,Pred_test)))
+  # prediction on the total dataset
+  Pred_results[,"GAM",i] <- predict(gam_mgcv, spData, type="response")
+  ### RF ###
+  RF_mod = randomForest(x = calib[,c("bio7", "bio6", "bio15")],
+                        y = as.factor(calib$Veronica_chamaedrys),
+                        ntree = 500, importance = TRUE)
+  # prediction on the evaluation data and evaluation using the AUC approach
+  Pred_test <- predict(RF_mod, eval, type="response")
+  Test_results["RF",i] <- as.numeric(auc(roc(eval$Veronica_chamaedrys,
+                                             as.numeric(as.character(Pred_test)))))
+  # prediction on the total dataset
+  Pred_results[,"RF",i] = predict(RF_mod, spData, type="prob")[,2]
+  print(i)
+}
+
+# variation in auc between models & CV runs
+AUC <- unlist(Test_results)
+AUC <- as.data.frame(AUC)
+Test_results_ggplot <- cbind(AUC, model=rep(rownames(Test_results), times=nCV))
+p <- ggplot(Test_results_ggplot, aes(model, AUC))
+p + geom_boxplot() + theme_bw()
+# model with the highest AUC - best predictive performance
+
+ddply(Test_results_ggplot,.(model), summarize,
+      Mean_AUC = mean(AUC), SD_AUC = sd(AUC),
+      Median_AUC = median(AUC))
