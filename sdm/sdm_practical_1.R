@@ -25,11 +25,12 @@ data("ecospat.testData") #a dataset within the package ecospat that contain our 
 spObs <- ecospat.testData[,c("long","lat","Veronica_chamaedrys")]
 head(spObs) # overview of the data frame
 # it is presence absence data
-coord<-spObs[,1:2]
+coord<-spObs[,1:2] # extract coordinates
 
 # gather all the bioclimatic raster files
 raster_files <- mixedsort(list.files(path = "sdm/data_tp1/covariates",
                                      pattern = "bio",
+                      # getting all file names that contain pattern:bio
                                      full.names = TRUE))
 # gather all raster layers
 bioclim <-rast(raster_files)
@@ -51,6 +52,7 @@ head(coord)
 
 # extract bioclimatic values
 bioclimValues <- na.omit(data.frame(extract(bioclim, coord)))
+
 # coord corresponds to species coordinates, bioclim to bioclim data
 head(bioclimValues)
 
@@ -95,6 +97,11 @@ abline(h = 0.3, lty = 2, col = "red", lwd = 2)
 cor(bioclimValues[,c("bio7", "bio6", "bio15")])
 # bio7 - annual T range
 
+
+# bio7 = Temperature Annual Range
+# bio6 = Min Temperature of Coldest Month
+# bio15 = Precipitation Seasonality (Coefficient of Variation)
+
 # modeling ----
 
 # prep data
@@ -111,7 +118,7 @@ sum(spData[,"Veronica_chamaedrys"]) /nrow(spData)
 
 dim(spData)
 
-# 1 - environmental envelope technique---
+# 1 - environmental envelope technique----
 pred_BIOCLIM_100 <- bm_SRE(resp.var = spData$Veronica_chamaedrys,
                            expl.var = spData[, c("bio7", "bio6", "bio15")],
                           new.env = subset(bioclim, c ("bio7", "bio6", "bio15")),
@@ -142,7 +149,7 @@ points(spData[spData$Veronica_chamaedrys==0,1:2],cex=0.5)
 
 # predictions dont match too well with data: some locations where its predicted as present but no occurence recorded
 
-# regression based approaches---
+# regression based approaches----
 
 # Simple GLM with linear predictors
 glm1 <- glm(Veronica_chamaedrys ~ bio7 + bio6 + bio15,
@@ -299,6 +306,7 @@ RF = randomForest(x = spData[,c("bio7", "bio6", "bio15")],
 RF.pred = predict(RF, type = "prob")[,2]
 
 importance(RF)
+?importance
 
 # plot response curves
 out.rf <- NULL
@@ -350,6 +358,58 @@ gam_df2<-gam::step.Gam(gamStart,list(~1 + gam::s(bio7,2),~1 + gam::s(bio6,2),~1 
                   trace=T,direction="both")
 gam_df2$anova
 
+# with df = 4
+gam_df4 <- step.Gam(gamStart,
+                    list(~1 + s(bio7,4),~ 1+ s(bio6,4),~ 1+ s(bio15,4)),
+                    trace=F, direction = "both")
+gam_df4$anova
+
 gam::step.Gam
 View(spData)
 str(spData)
+
+##with df = 8.8 (df can be a decimal number)
+gam_df8.8 <- step.Gam(gamStart,
+                      list(~1 + s(bio7,8.8),~ 1+ s(bio6,8.8),~ 1+ s(bio15,8.8)),
+                      trace=F, direction = "both")
+gam_df8.8$anova
+
+# bio7 is most important based on DROP 
+# in deviance & aic at the step of adding it
+
+# response curves
+out.gam <- NULL
+#prepare median table
+var.names <- c("bio7","bio6","bio15")
+medians <- apply(spData[,var.names],2,median)
+medians_table <- data.frame(sapply(medians,function(x)rep(x,100)))
+#get predictions for each variable gradient for each model
+for(i in 1:3){
+  foc.var <- spData[,var.names[i]]
+  new.data <- medians_table
+  var.new <- seq(min(foc.var), max(foc.var), length=100)
+  new.data[,i] <- var.new
+  pred.gam_df2 <- predict(gam_df2, newdata=new.data, type="response")
+  pred.gam_df4 <- predict(gam_df4, newdata=new.data, type="response")
+  pred.gam_df8.8 <- predict(gam_df8.8, newdata=new.data, type="response")
+  pred.glob <- c(pred.gam_df2,pred.gam_df4,pred.gam_df8.8)
+  tmp1 <- cbind(Occ.prob=pred.glob,Env.val=var.new)
+  tmp2 <- data.frame(cbind(Algorithm=rep(c("GAM_df2","GAM_df4","GAM_df8.8"),each=100),
+                           Var.name=var.names[i]))
+  out.gam <- rbind(out.gam,cbind(tmp1,tmp2))
+}
+
+# plot results
+resp.gam <- ggplot(out.gam, aes(x=Env.val, y=Occ.prob, color=Algorithm,
+                                linetype=Algorithm)) +
+  geom_line(linewidth=1) +
+  scale_color_manual(values=c("#007991", "#439A86", "#BCD8C1"))+
+  facet_wrap(~Var.name,ncol=2,scale="free_x")+
+  theme_bw()+
+  labs(x="Value",y="Occurence probability")+
+  theme_bw()
+print(resp.gam)
+
+# rising value of df -> model can take more complex shape
+# sometimes simple models better, somtimes increasing complexity helps
+# but overfitting, beware
