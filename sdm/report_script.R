@@ -119,8 +119,11 @@ str(env_values)
 # create correlation matrix -----
 df.cor.envdata <- data.frame(round(cor(env_values), 3))
 head(df.cor.envdata)
-
-corrplot.mixed(cor(env_values), number.cex= 0.5, tl.cex = 0.5)
+head(env_values)
+# remove id column - hope this doesnt cause issues idk
+env_values <- env_values %>% dplyr::select(-ID)
+View(env_values)
+corrplot.mixed(cor(env_values), number.cex= 0.5, tl.cex = 0.5, tl.pos = "lt")
 # this looks wrong lol
 
 # select least correlated variables based on threshold of 0.7
@@ -142,10 +145,12 @@ nrow(pa_data)
 str(env_values)
 
 cor(env_values[,c( "bio13", "bio15", "f", "r", "forestaggr.1", "slope")])
+
+cor(env_values[,c("bio1", "bio15", "forestaggr", "slope", "r", "f",  "twi25ss", "srad", "hillshade")])
+# h, n remove
 # maybe change forestaggr - see which is the best predictor (but 500 focal too correlated)
-# bio1 and bio13 too correlated
 # keep bio13, drop bio1 - mabye max T?
-# srad ok
+# srad ok - but is it rly reasonable?
 
 # try to see if there is relationship?? idk
 
@@ -158,33 +163,50 @@ View(species_data)
 # try to start modelling ----
 # glm -----
 # Simple GLM with linear predictors
-glm1 <- glm(presence ~ bio13 + bio15 + f +r+ forestaggr.1 + slope,
+glm1 <- glm(presence ~ bio15 + gdd3 + f +r+ forestaggr + slope  + srad + hillshade,
             data=species_data, family="binomial")
 summary(glm1)
-str(species_data$presence)
+# r is the only significant predictor
+
 # Simple GLM with quadratic predictors
-glm2 <- glm(presence ~ I(bio13^2)+I(bio15^2)+I(f^2)  +I(r^2)  +I(forestaggr.1^2)+I(slope^2),
+glm2 <- glm(presence ~ I(bio15^2)+I(gdd3^2)+I(f^2)  +I(r^2)  +I(forestaggr^2)+I(slope^2)
+             +I(srad^2) + +I(hillshade^2),
             data=species_data, family="binomial")
 summary(glm2)
-
+# same
 anova(glm1, glm2, test = "Chisq")
 
 # A bit more complex GLM : both linear and quadratic predictors
-glm3  <- glm(presence ~ bio13 + I(bio13^2) + bio15 + I(bio15^2) + f + I(f^2) + 
-                              r + I(r^2) + forestaggr.1 + I(forestaggr.1^2) + 
-                              slope + I(slope^2),data = species_data,family=binomial)
+glm3  <- glm(presence ~ bio15 + I(bio15^2) + gdd3 + I(gdd3^2) + f + I(f^2) + 
+                              r + I(r^2) + forestaggr + I(forestaggr^2) + 
+                              slope + I(slope^2)   +
+             srad +I(srad^2)+ hillshade + I(hillshade^2),
+             data = species_data,family=binomial)
+summary(glm3)
 # idk i think this would be too much, too many predictors
+# lol this is so much worse...
+
+# Centering the continuous variables
+species_data$gdd3_centered <- scale(species_data$gdd3, center = TRUE, scale = FALSE)
+env_variables$gdd3_centered <- scale(env_variables$gdd3, center = TRUE, scale = FALSE)
+# Create the squared term for the centered gdd3 variable
+species_data$gdd3_squared <- species_data$gdd3_centered^2
+env_variables$gdd3_squared <- env_variables$gdd3_centered^2
+# let this go bc fucks up the projections
+
+
+# Re-run the model with the centered gdd3 and its squared term
+glm_final <- glm(presence ~ bio15 + gdd3 + I(gdd3^2) + f + 
+                   r + forestaggr + slope + srad + hillshade,
+                 data = species_data, family = binomial)
+summary(glm_final)
 
 anova(glm1, glm3, test = "Chisq")
 
-# just bio13 with quadratic term
-glm4 <- glm(presence ~ bio13 + I(bio13^2) + bio15 + f +r+ forestaggr.1 + slope,
-            data=species_data, family="binomial")
-anova(glm1, glm4, test = "Chisq")
-
+vif(glm_final)
 # ok moving on ----
-# predictions
-var.names <- c("bio13", "bio15", "f", "r", "forestaggr.1", "slope")
+# predictions of relationship between variables and p/a in glm -----
+var.names <- c("bio15", "gdd3", "f", "r", "forestaggr", "slope",  "srad", "hillshade")
 # fix other values
 medians<- apply(species_data[, var.names],2,median)
 
@@ -203,7 +225,7 @@ head(new.data)
 # ask the 3 glm-s to predict on the new ("fake") dataset
 pred.glm1 <-predict(glm1,newdata=new.data,type="response")
 pred.glm2<-predict(glm2,newdata=new.data,type="response")
-pred.glm3<-predict(glm3,newdata=new.data,type="response")
+pred.glm_final<-predict(glm_final,newdata=new.data,type="response")
 
 pred.glob <- c(pred.glm1, pred.glm2)
 
@@ -219,7 +241,7 @@ resp1.glm<-ggplot(cbind(tmp1,tmp2), aes(x=Env.val,y=Occ.prob,color=Algorithm,
   labs(x="Value",y="Occurence probability")
 resp1.glm
 
-# plotting rspc for all 3 vars
+# plotting rspc for all  vars
 out1.glm = NULL
 for(i in 1:(length(var.names))) {
   foc.var <- species_data[,var.names[i]]
@@ -235,6 +257,7 @@ for(i in 1:(length(var.names))) {
                            Var.name = var.names[i]))
   out1.glm <- rbind(out1.glm, cbind(tmp1, tmp2))
 }
+# ones that look like without effect: bio15 (kinda), forestaggr, slope, twi25ss
 
 resp1.glm<-ggplot(out1.glm,aes(x=Env.val,y=Occ.prob,color=Algorithm,
                                linetype=Algorithm)) +
@@ -246,18 +269,56 @@ resp1.glm<-ggplot(out1.glm,aes(x=Env.val,y=Occ.prob,color=Algorithm,
   theme_bw()
   print(resp1.glm)
 
-ggsave("smd/report/plots/glm_curves_initial.png", dpi = 600)
+ggsave("sdm/report/plots/glm_curves_initial_v2.png", dpi = 600)
+
+# response curves for the final glm only ----
+
+out_final <- NULL
+
+for(i in 1:length(var.names)) {
+  foc.var <- species_data[, var.names[i]]
+  
+  # Create new dataset for predictions
+  new.data <- medians_table
+  var.new <- seq(min(foc.var), max(foc.var), length.out = 100)
+  new.data[, i] <- var.new
+  
+  # Predict using glm_final
+  pred <- predict(glm_final, newdata = new.data, type = "response")
+  
+  # Store output
+  tmp <- data.frame(
+    Occ.prob = pred,
+    Env.val = var.new,
+    Var.name = var.names[i],
+    Algorithm = "GLM_final"
+  )
+  out_final <- rbind(out_final, tmp)
+}
+
+# Plot
+resp_glm_final <- ggplot(out_final, aes(x = Env.val, y = Occ.prob)) +
+  geom_line(color = "#007991", lwd = 1) +
+  facet_wrap(~Var.name, ncol = 2, scales = "free_x") +
+  theme_bw() +
+  labs(x = "\nValue", y = "Occurrence probability\n")
+
+print(resp_glm_final)
+
+ggsave("sdm/report/plots/responses_glm.png", dpi = 600)
 
 # slope looks unnecessary
 # can keep these minus slope for now, but also play around with other variables later
 # also maybe bio13 not as important??
 # maybe bio1 instead of bio13
 
+# final model: only include quadratic term (as well as linear) for gdd. 
+
 # stepwise parameter selection -----
 
 glmStart <- glm(presence~1, data = species_data, family = binomial)
 glm.formula<-bm_MakeFormula("presence",
-                            species_data[,c("bio13", "bio15","f", "forestaggr.1", "r")],
+                            species_data[,c("bio15", "gdd3", "f", "r", "forestaggr", "slope", "twi25ss", "srad", "hillshade")],
                             "quadratic",interaction.level=1)
 # stepwise selection with AIC
 glmModAIC <- stepAIC(glmStart, glm.formula,
@@ -265,7 +326,7 @@ glmModAIC <- stepAIC(glmStart, glm.formula,
                      trace = TRUE,
                      k = 2)
 
-# only keeps bio13 and r
+# only keeps gdd and r
 
 # Stepwise selection with BIC
 glmModBIC<-stepAIC(glmStart,
@@ -316,17 +377,15 @@ plot(RP, uniform=F, margin=0.1, branch=1)
 text(RP)
 
 # random forest-----
-RF = randomForest(x = species_data[,c("bio13", "bio15", "r", "f", "forestaggr.1")],
+rf_final = randomForest(x = species_data[,c("bio15", "f", "r", "forestaggr", "gdd3", "hillshade",  "slope", "srad")],
                   y = as.factor(species_data$presence),
                   ntree = 1000,
                   importance =TRUE)
-RF.pred = predict(RF, type = "prob")[,2]
+RF.pred = predict(rf_final, type = "prob")[,2]
 
-importance(RF)
+importance(rf_final)
 ?importance
 
-# most important is bio13 and r
-# bio15 no importance
 
 out.rf <- NULL
 for (i in 1:length(var.names)){
@@ -339,18 +398,18 @@ for (i in 1:length(var.names)){
   tmp2<-data.frame(cbind(Algorithm=rep(c("RF"),each=100),Var.name=var.names[i]))
   out.rf<-rbind(out.rf,cbind(tmp1,tmp2))
 }
-resp.rf<-ggplot(out.rf, aes(x=Env.val,y=Occ.prob,color=Algorithm,
-                            linetype=Algorithm)) +
-  geom_line(size=1)+
-  scale_color_manual(values=c("red"))+
+resp.rf<-ggplot(out.rf, aes(x=Env.val,y=Occ.prob)) +
+  geom_line(size=1, color = "#007991")+
+  scale_color_manual(values=c("#007991"))+
   facet_wrap(~Var.name,ncol=2,scale="free_x")+
   theme_bw()+
-  labs(x="Value",y="Occurenceprobability")+
+  labs(x="\nValue",y="Occurence probability\n")+
   theme_bw()
-print(resp.rf)
+  print(resp.rf)
+  
+  ggsave("sdm/report/plots/rf_final.png", dpi = 600)
 
-# try with different bio variables, and with forest aggr ddifferent scales. 
-# r definitely needs to stay
+
 # gam with stepwise selection ----
 gamStart<-gam::gam(presence~1,data=species_data,family=binomial)
 
@@ -401,7 +460,7 @@ gam_df8$anova
 # response curves
 out.gam <- NULL
 #prepare median table
-var.names <- c("bio13","bio15","f", "forestaggr.1", "r")
+# var.names <- c("bio13","bio15","f", "forestaggr.1", "r")
 medians <- apply(species_data[,var.names],2,median)
 medians_table <- data.frame(sapply(medians,function(x)rep(x,100)))
 #get predictions for each variable gradient for each model
@@ -435,6 +494,44 @@ print(resp.gam)
 # sometimes simple models better, somtimes increasing complexity helps
 # but overfitting, beware
 
+# final gam model ----
+library(mgcv)
+gam_final <- gam(presence ~ s(bio15) + s(gdd3) + s(f) + s(r) + 
+                   s(forestaggr) + s(slope) + 
+                   s(srad) + s(hillshade),
+                 data = species_data, family = binomial)
+summary(gam_final)
+
+# Compute medians for all variables
+medians <- apply(species_data[, var.names], 2, median, na.rm = TRUE)
+medians_table <- as.data.frame(sapply(medians, function(x) rep(x, 100)))
+
+# Generate predictions across the gradient of each variable
+out.gam <- NULL
+
+for (i in 1:length(var.names)) {
+  foc.var <- species_data[[var.names[i]]]
+  var.new <- seq(min(foc.var, na.rm = TRUE), max(foc.var, na.rm = TRUE), length = 100)
+  
+  new.data <- medians_table
+  new.data[[var.names[i]]] <- var.new
+  
+  pred.gam <- predict(gam_final, newdata = new.data, type = "response")
+  
+  tmp1 <- data.frame(Occ.prob = pred.gam, Env.val = var.new)
+  tmp2 <- data.frame(Algorithm = "GAM_final", Var.name = var.names[i])
+  out.gam <- rbind(out.gam, cbind(tmp1, tmp2))
+}
+
+resp.gam <- ggplot(out.gam, aes(x = Env.val, y = Occ.prob)) +
+  geom_line(color = "#007991", linewidth = 1) +
+  facet_wrap(~Var.name, ncol = 2, scales = "free_x") +
+  theme_bw() +
+  labs(x = "\nValue", y = "Occurrence probability\n")
+print(resp.gam)
+
+ggsave("sdm/report/plots/gam_final_plots.png", dpi = 600)
+
 # model evaluation ----
 # libraries ----
 library(biomod2)
@@ -461,8 +558,8 @@ library(dplyr)
 # run models for which to evaluate performance
 
 # glm
-GLM <- glm(formula = presence ~ bio13 +  I(bio13^2) + (bio15) + r,
-           family = binomial, data = species_data)
+#GLM <- glm(formula = presence ~ bio13 +  I(bio13^2) + (bio15) + r,
+#          family = binomial, data = species_data)
 GLM.pred <- predict (GLM, newdata = species_data[,c("bio13", "bio15", "r")],
                      type = "response")
 
@@ -484,15 +581,40 @@ EvalData <- data.frame(cbind(plotID, ObsPA, GLM.pred, GAM.pred, RF.pred))
 colnames(EvalData) <- c ("plotID", "ObsPA", "GLM", "GAM", "RF")
 head(EvalData)
 
+# final models and predictions for evaluating perf----
+glm_final
+GLM.pred =predict(glm_final, newdata = species_data [,c("bio15",
+ "gdd3", "srad","r", "f", "hillshade", "slope", "forestaggr")], 
+ type = "response")
+
+gam_final
+GAM.pred =predict(gam_final, newdata = species_data [,c("bio15",
+            "gdd3", "srad","r", "f", "hillshade", "slope", "forestaggr")], 
+                  type = "response")
+
+rf_final
+RF.pred = predict(rf_final, type="prob")[,2]
+
+# final dataset with all predictions
+ObsPA <- species_data$presence
+plotID <- 1:nrow(species_data)
+EvalData <- data.frame(cbind(plotID, ObsPA, GLM.pred, GAM.pred, RF.pred))
+colnames(EvalData) <- c ("plotID", "ObsPA", "GLM", "GAM", "RF")
+head(EvalData)
+
+
 # measuring model accuracy ----
+# calibration ----
+# extent to which model correctly predicts presence
+
 par(oma = c(2, 2, 0, 0), mar = c(2, 2, 2, 1), mfrow = c(2, 2),
     cex = 0.7, cex.lab = 1.4, mgp = c(2, 0.5, 0))
 for (mod in 1:3) {
   calibration.plot(EvalData, which.model = mod, color = mod + 1,
                    xlab = "", ylab = "", N.bins=10)
-  mtext("Predicted Probability of presence", side = 1, line = 1,
+  mtext("\nPredicted Probability of presence", side = 1, line = 1,
         cex = 1.4, outer = TRUE)
-  mtext("Proportion of observed presence", side = 2, line =-4,
+  mtext("Proportion of observed presence\n", side = 2, line =-4,
         cex = 1.4, outer = TRUE)
 }
 
@@ -502,11 +624,15 @@ calibration.plot(SIM3DATA, which.model = 1, color = 5,
                  main = "Observed vs Predicted (Bad calibration")
 ?calibration.plot
 
-# rf seems the best but still kinda deviates at high  predicted probability
-# - observed probability there is still kinda low
+# gam seems the best
 
-table(EvalData$GLM>0.5, EvalData$ObsPA, dnn= c("Prediction", "Observation"))
-accu <- presence.absence.accuracy(EvalData, which.model = 1, threshold = 11,
+# discrimination -----
+# compare continuous predictions to the binary observations
+# binarize predictions
+# choosing threshold
+
+table(EvalData$GAM>0.5, EvalData$ObsPA, dnn= c("Prediction", "Observation"))
+accu <- presence.absence.accuracy(EvalData, which.model = 2, threshold = 11,
                                   st.dev = FALSE)
 # good at predicting absences but not great at predicting presences.
 # also not many presences in general - could be an issue.
@@ -517,14 +643,18 @@ pred.prev <- predicted.prevalence(EvalData, threshold = 11)
 pred.prev[, 2:5] <- round(pred.prev[, 2:5], digits = 2)
 pred.prev
 
-ecospat.meva.table(Pred = EvalData$GLM, Sp.occ = EvalData$ObsPA, th = 0.5)
+ecospat.meva.table(Pred = EvalData$GAM, Sp.occ = EvalData$ObsPA, th = 0.5)
 
-kappa.max <- ecospat.max.kappa(Pred = EvalData$GLM, Sp.occ = EvalData$ObsPA)
+kappa.max <- ecospat.max.kappa(Pred = EvalData$GAM, Sp.occ = EvalData$ObsPA)
 head(kappa.max$table)
 
 kappa.max$max.Kappa
+# suggests moderate agreement
+# above, this, predict presence, below this: predict absence
 
-tss.max <- ecospat.max.tss(Pred = EvalData$GLM, Sp.occ = EvalData$ObsPA)
+tss.max <- ecospat.max.tss(Pred = EvalData$GAM, Sp.occ = EvalData$ObsPA)
+tss.max$max.TSS
+# a better threshold bc not affected by prevalence.
 head(tss.max$table)
 
 tmpKappa<-NULL
@@ -547,10 +677,10 @@ tmp<-rbind.data.frame(tmpKappa,tmpTSS)
 ggplot(tmp,aes(x=Threshold,y=Value,color=Model))+
   geom_line(linewidth=1.1)+
   scale_color_discrete(type=c("#007991","#439A86","#BCD8C1"))+
+  theme_bw()+
   facet_wrap(~Evaluation.Metric)
 
-# seems like we have to set a low threshold
-# a low probability at which above this number things would be classified as presence
+# gam performs best
 
 # error threshold plots
 data <- EvalData[1:5]
@@ -561,62 +691,68 @@ for (mod in 1:N.models){
                        which.model = mod,
                        color = TRUE,
                        add.legend = TRUE,
-                       legend.cex = 0.7)
+                       legend.cex = 0.9)
 }
+
 
 par(mfrow  = c(1,1))
 auc.roc.plot(data, color=c("#007991", "#439A86", "#BCD8C1"), legend.cex=0.7, main="")
+
 # should be towards the top left corner
 
 # calculate optimal threshold using different methods
 optimal.thresholds(EvalData, opt.methods = 1:12, req.sens=0.9, req.spec = 0.9, FPC = 2, FNC = 1)
+# can stick to tss
 
 
-# 2.1.3. presence only data
-obs <- EvalData$GLM [which(EvalData$ObsPA ==1)]
-boyceplot <- ecospat.boyce(fit = EvalData$GLM, obs, nclass = 0,
-                           window.w = "default", res = 100, PEplot = T)
-boyceplot$cor
-abline(a=0,b=max(boyceplot$F.ratio))
 
-# doesnt really seem to work at high habitat suitability.
-# low presences predicted there.
-
-# validation ----
+# DATA PARTITIONING STRATEGIES  / validation ----
 # unsure if correct bc some things changed compared to tp script
 
 # Ensure the data is correct
 fungus <- data.frame(bio15 = species_data$bio15,
-                     bio13 = species_data$bio13,
+                     gdd3 = species_data$gdd3,
+                     srad = species_data$srad,
+                     f = species_data$f,
                      r = species_data$r,
+                     forestaggr = species_data$forestaggr,
+                     slope = species_data$slope,
+                     hillshade = species_data$hillshade,
                      presence = as.factor(species_data$presence))
 
+# k-fold cross validation
+# 1 - for glm
 set.seed(123)
 cv.error.10 <- rep(0, 10)
 
 for (i in 1:10) {
-  glm.fit <- glm(presence ~ poly(bio15 + bio13 + r, i),  # polynomial of the sum
-                 family = "binomial",
+  # Fit the original GLM model with the quadratic term for gdd3
+  glm.fit <- glm(presence ~ bio15 + gdd3 + srad + f + r + forestaggr + slope + hillshade + I(gdd3^2),
+                 family = "binomial", 
                  data = fungus)
   
-  # Use the same dataset used for model fitting
+  # Cross-validation on the same model
   cv.error.10[i] <- cv.glm(fungus, glm.fit, K = 10)$delta[1]
 }
 
 cv.error.10
+mean(cv.error.10)
+# 0.1715536
 
-# adding complexity beyond degree 2 or 3 does not improve accuracy meaningfully.
-
-# example with rf model
+#  rf model
 set.seed(123)
 fungus$presence<-make.names(fungus$presence)
 # idk what this does lol
 # define training control
-train_control <- trainControl(method = "cv", number = 5, savePredictions = T,
+# cv of 10
+train_control <- trainControl(method = "cv", number = 10, savePredictions = T,
                               summaryFunction = twoClassSummary, classProbs = T)
 # train model
-model <- train(presence~ ., data = fungus, trControl = train_control, method = "rf")
+rf_model <- train(presence ~ ., data = fungus, trControl = train_control, method = "rf")
 
+# get cv results
+(cv_results<- rf_model$results)
+# highest accuracy: 
 # plot roc
 selectedIndices <- model$pred$mtry == 3
 ROC <- roc(as.numeric(model$pred$obs[selectedIndices]),
@@ -627,6 +763,59 @@ confMat <- caret::confusionMatrix(data = model$pred$obs[selectedIndices],
 confMat$overall
 par(mfrow=c(1,1))
 plot.roc(smooth(ROC))
+ROC$auc
+# 0.7351
+
+# mean AUC(ROC) pf 0-77+-0.11, sensitivity of 0.9 and specificity of 0.37 
+# not good at predicting absences
+# accuracy of 0.77, (0.708  0.826), kappa 0.40
+
+# on gam - ??
+
+library(caret)
+library(pROC)
+
+set.seed(123)
+
+# Define train control
+train_control <- trainControl(method = "cv", number = 10,
+                              summaryFunction = twoClassSummary,
+                              classProbs = TRUE, savePredictions = TRUE)
+
+# Train the GAM model
+model_gam <- train(presence ~ bio15+
+                   gdd3+
+                   srad +
+                   f +
+                   r+
+                   forestaggr +
+                   slope +
+                   hillshade,
+                   data = fungus,
+                   method = "gam",
+                   trControl = train_control,
+                   metric = "ROC",
+                   family = "binomial")
+
+model_gam
+library(pROC)
+
+# Use all predictions across folds
+roc_obj <- roc(model_gam$pred$obs, model_gam$pred$X1)
+
+# Plot the ROC
+plot.roc(roc_obj)
+
+# If you want the AUC:
+auc(roc_obj)
+# 0.7025
+
+# If you want the max TSS:
+TSS <- roc_obj$sensitivities + roc_obj$specificities - 1
+max(TSS) # 0.3347
+
+cv_results <- model_gam$results
+cv_results  # Mean AUC, Sensitivity, Specificity for different mtry values
 
 
 # other data partitioning methods -----
@@ -695,22 +884,30 @@ for(i in 1:nCV){
   # separate the original data in one subset for calibration and another for evaluation.
   a <- bm_SampleBinaryVector(obs = species_data$presence, ratio=0.7)
   calib <- species_data[a$calibration,]
+  # Center the gdd3 variable
+  calib$gdd3_centered <- scale(calib$gdd3, center = TRUE, scale = FALSE)
+  # Create the squared term
+  calib$gdd3_squared <- calib$gdd3_centered^2
+  
+  
   eval <- species_data[a$validation,]
   ### GLM ###
-  glmStart <- glm(presence~1, data=calib, family=binomial)
-  glm.formula <- bm_MakeFormula("presence",
-                                species_data[,c("bio13", "bio15", "r")],
-                                "quadratic", interaction.level=1)
-  glmModAIC <- stepAIC(glmStart, glm.formula, data = calib,
-                       direction = "both", trace = FALSE, k = 2,
-                       control=glm.control(maxit=100))
+  # taken out stepwise
+  # Use your final GLM model here instead of the stepwise model
+  glm_model <- glm(presence ~ bio15 + gdd3 + I(gdd3^2) + f + r + forestaggr +
+                     slope + srad + hillshade, 
+                   data = calib, family = binomial,
+                   control = glm.control(maxit = 100))
+  
   # prediction on the evaluation data and evaluation using the AUC approach
-  Pred_test <- predict(glmModAIC, eval, type="response")
-  Test_results["GLM",i] <- as.numeric(auc(roc(eval$presence,Pred_test)))
+  Pred_test <- predict(glm_model, eval, type = "response")
+  Test_results["GLM", i] <- as.numeric(auc(roc(eval$presence, Pred_test)))
+  
   # prediction on the total dataset
-  Pred_results[,"GLM",i] <- predict(glmModAIC, species_data, type="response")
+  Pred_results[,"GLM",i] <- predict(glm_model, species_data, type="response")
   ### GAM ###
-  gam_mgcv <- gam(presence ~ s(bio13) + s(bio15) + s(r),
+  gam_mgcv <- gam(presence ~ s(bio15) + s(gdd3) + s(r)+ s(f)+ s(forestaggr)
+                  + s(slope)+ s (srad) + s(hillshade),
                   data=calib, family="binomial")
   # prediction on the evaluation data and evaluation using the AUC approach
   Pred_test <- predict(gam_mgcv, eval, type="response")
@@ -718,9 +915,10 @@ for(i in 1:nCV){
   # prediction on the total dataset
   Pred_results[,"GAM",i] <- predict(gam_mgcv, species_data, type="response")
   ### RF ###
-  RF_mod = randomForest(x = calib[,c("bio13", "bio15", "r")],
+  RF_mod = randomForest(x = calib[,c("bio15","gdd3", "f", "r", "forestaggr",
+                                     "slope" ,"srad" ,"hillshade" )],
                         y = as.factor(calib$presence),
-                        ntree = 500, importance = TRUE)
+                        ntree = 1000, importance = TRUE)
   # prediction on the evaluation data and evaluation using the AUC approach
   Pred_test <- predict(RF_mod, eval, type="response")
   Test_results["RF",i] <- as.numeric(auc(roc(eval$presence,
@@ -769,7 +967,7 @@ if( "package:gam" %in% search()){
 # missed 1 step - remove coordinates without climatic info. 
 # if things not working then maybe do this step
 
-gam1 <- mgcv::gam(presence ~ s(bio13,k=4) + s(bio15,k=4) + s(r,k=4),
+gam_simplified <- mgcv::gam(presence ~ s(bio13,k=4) + s(bio15,k=4) + s(r,k=4),
                   data=species_data, family="binomial")
 glm1 <- glm(formula = presence ~ bio13 + I(bio13^2) + bio15 + r,
             family = binomial, data = species_data)
@@ -777,24 +975,25 @@ rf1 = randomForest(x = species_data[,c("bio13", "bio15", "r")],
                    y = as.factor(species_data$presence),
                    ntree = 1000)
 
+# but i can just use my models
+
 # Predicted occurence probabilities
 
 # make names unique
 names(env_variables) <- make.unique(names(env_variables))
+relevant_layers <- env_variables[[c("bio15", "gdd3", "gdd3_centered", "f", "r", "forestaggr", "slope", "srad", "hillshade")]]
 
-fungus.curr.gam <- predict(env_variables, gam1, type="response")
+fungus.curr.gam <- predict(env_variables, gam_final, type="response")
 tmp.fungus.gam.df <- cbind.data.frame(Model = "GAM",
                                     as.data.frame(fungus.curr.gam,
                                                   xy=T, na.rm=T))
-fungus.curr.glm <- predict(env_variables, glm1, type="response")
+
+fungus.curr.glm <- predict(env_variables, glm_final, type="response")
 tmp.fungus.glm.df <- cbind.data.frame(Model = "GLM",
                                     as.data.frame(fungus.curr.glm,
                                                   xy=T, na.rm=T))
-fungus.curr.glm <- predict(env_variables, glm1, type="response")
-tmp.fungus.glm.df <- cbind.data.frame(Model = "GLM",
-                                    as.data.frame(fungus.curr.glm,
-                                                  xy=T, na.rm=T))
-fungus.curr.rf <- predict(env_variables, rf1, type="prob", na.rm=T)[[2]]
+
+fungus.curr.rf <- predict(env_variables, rf_final, type="prob", na.rm=T)[[2]]
 tmp.fungus.rf.df <- cbind.data.frame(Model = "RF",
                                    as.data.frame(fungus.curr.rf,
                                                  xy=T, na.rm=T))
@@ -808,12 +1007,12 @@ PlotData <- rbind.data.frame(tmp.fungus.gam.df,tmp.fungus.glm.df,
 
 # plot the new spatial patterns
 pal1 <- rev(colorRampPalette(brewer.pal(11,"RdYlGn")[11:1])(64))
-ggplot(PlotData, aes(x=x, y=y, fill=lyr1)) +
+(predicted_spatial_patterns <- ggplot(PlotData, aes(x=x, y=y, fill=lyr1)) +
   geom_raster(alpha=0.8) +
   facet_wrap(~Model) +
   coord_equal()+
   scale_fill_gradientn("Occurence\nprobability",colours=pal1)+
-  theme_void()
+  theme_void())
 
 # predict SE for GAM (also available for GLM) for the df and plot the predictions
 
@@ -855,7 +1054,7 @@ colnames(tmp.fungus.sd.df) = c( "Ens","x", "y", "Prob")
 #Here a weighted mean is perform based on the mean AUC value
 #obtained during practical 2 based on 20 CV (can slightly change)
 fungus.curr.wmean <- weighted.mean(fungus.curr,
-                                 w= c(0.84,0.84, 0.69))
+                                 w= c(0.6997442 ,0.7613171 , 0.6175831 ))
 tmp.fungus.wmean.df <- cbind.data.frame(Ens = "wMean",
                                       as.data.frame(fungus.curr.wmean,
                                                     xy=T, na.rm=T))
@@ -865,14 +1064,20 @@ colnames(tmp.fungus.wmean.df) = c( "Ens","x", "y", "Prob")
 PlotData <- rbind.data.frame(tmp.fungus.mean.df,
                              tmp.fungus.sd.df,
                              tmp.fungus.wmean.df)
+# Update map names (i.e., factor levels in 'Ens')
+PlotData$Ens <- factor(PlotData$Ens,
+                       levels = c("Mean", "sd", "wMean"),
+                       labels = c("Simple Mean", "Model Disagreement (sd)", "Weighted Mean"))
+
 # Plot the spatial patterns
 pal1 <- rev(colorRampPalette(brewer.pal(11,"RdYlGn")[11:1])(64))
-ggplot(PlotData, aes(x=x, y=y, fill=Prob)) +
+(ensemble_plot <- ggplot(PlotData, aes(x=x, y=y, fill=Prob)) +
   geom_raster(alpha=0.8) +
   facet_wrap(~Ens) +
   coord_equal()+
   scale_fill_gradientn("Occurence\nprobability",colours=pal1)+
-  theme_void()
+  theme_void())
+ggsave("sdm/report/plots/ensemble_maps.png", dpi= 600)
 
 # predict in a new area - unsure what this is??-----
 envData <- as.data.frame(env_variables,xy=T)
@@ -932,22 +1137,47 @@ plot_grid(mess, mess.w, mess.neg, labels=c("A", "B", "C"), nrow=1)
 # LITERALLY NO IDEA what this does
 
 # projecting in time----
+
 # used rcp 85, also try rcp 45
-bio13r.fu <- rast("sdm/covariates_future/bio13_20702099_RCP85.tif")
-bio15r.fu <- rast("sdm/covariates_future/bio15_20702099_RCP85.tif")
-r_r.fu <- rast("sdm/Covariate_currentTime/r.tif")
-biostack.fut <- c(bio13r.fu,bio15r.fu,r_r.fu)
-names(biostack.fut) <- c("bio13", "bio15", "r")
+
+bio15.fu.rcp45 <- rast("sdm/covariates_future/bio15_20702099_RCP45.tif")
+gdd3.fu.rcp45 <- rast("sdm/covariates_future/gdd3_20702099_RCP45.tif")
+f.fu <-rast("sdm/Covariate_currentTime/f.tif")
+r.fu <- rast("sdm/Covariate_currentTime/r.tif")
+forestaggr.fu <- rast("sdm/Covariate_currentTime/forestaggr_100.tif")
+slope.fu <- rast("sdm/Covariate_currentTime/slope_mean2m.tif")
+srad.fu <- rast ("sdm/Covariate_currentTime/srad_mean_060708_summer.tif")
+hillshade.fu <- rast ("sdm/Covariate_currentTime/hillshade_mean2m.tif")
+
+# Load and reproject rasters (if needed)
+target_crs <- "EPSG:2056"
+
+bio15.fu.rcp45 <- project(rast("sdm/covariates_Future/bio15_20702099_RCP45.tif"), target_crs)
+gdd3.fu.rcp45 <- project(rast("sdm/covariates_Future/gdd3_20702099_RCP45.tif"), target_crs)
+f.fu          <- project(rast("sdm/Covariate_currentTime/f.tif"), target_crs)
+r.fu          <- project(rast("sdm/Covariate_currentTime/r.tif"), target_crs)
+forestaggr.fu <- project(rast("sdm/Covariate_currentTime/forestaggr_100.tif"), target_crs)
+slope.fu      <- project(rast("sdm/Covariate_currentTime/slope_mean2m.tif"), target_crs)
+srad.fu       <- project(rast("sdm/Covariate_currentTime/srad_mean_060708_summer.tif"), target_crs)
+hillshade.fu  <- project(rast("sdm/Covariate_currentTime/hillshade_mean2m.tif"), target_crs)
+
+
+
+biostack.fut <- c(bio15.fu.rcp45,gdd3.fu.rcp45,f.fu,r.fu, forestaggr.fu, slope.fu, 
+                  srad.fu, hillshade.fu )
+
+names(biostack.fut) <- c("bio15", "gdd3", "r", "f","forestaggr","slope" , "srad" ,
+                         "hillshade" )
 
 names(biostack.fut)
 
-fungus.fut.gam <- predict(biostack.fut, gam1, type="response")
-fungus.fut.glm <- predict(biostack.fut, glm1, type="response")
-fungus.fut.rf <- predict(biostack.fut, rf1, type="prob", na.rm=T)[[2]]
+fungus.fut.gam <- predict(biostack.fut, gam_simplified, type="response")
+fungus.fut.glm <- predict(biostack.fut, glm_final, type="response")
+fungus.fut.rf <- predict(biostack.fut, rf_final, type="prob", na.rm=T)[[2]]
 ## Make an ensemble based on a weighted mean
 fungus.fut.wmean <- weighted.mean(c(fungus.fut.gam, fungus.fut.glm,
                                     fungus.fut.rf),
-                                  w= c(0.84,0.84, 0.69))
+                                  w= c(0.6997442 ,0.7613171 , 0.6175831))
 
 # plot the predictions
 fungus.df.cur <- cbind(as.data.frame(fungus.curr.wmean, xy=T, na.rm=T),
@@ -958,14 +1188,16 @@ tmp.dif <- cbind(as.data.frame(fungus.fut.wmean-fungus.curr.wmean,
                                xy=T, na.rm=T),
                  Map="Differences")
 df.all <- rbind(fungus.df.cur, fungus.df.fut, tmp.dif)
-ggplot(df.all, aes(x=x, y=y, fill=sum))+
+(future_map_1 <- ggplot(df.all, aes(x=x, y=y, fill=sum))+
   geom_raster(alpha=0.8)+
   coord_equal()+
   facet_wrap(~Map, nrow=1)+
   scale_fill_gradientn("Values", colours=pal1)+
-  theme_void()
+  theme_void())
 
 # actually a good plot!! area reduces in suitability
+
+# fuuuck
 
 # binarizing the meps: abs & p of suitable habitat
 # use the threshold that maximizes TSS
@@ -985,9 +1217,245 @@ fungus.df.fut.bin <- cbind(as.data.frame(fungus.fut.bin, xy=T, na.rm=T),
 
 df.all <- rbind(fungus.df.curr.bin,fungus.df.fut.bin)
 df.all$sum = as.factor(df.all$sum)
-ggplot(df.all, aes(x=x, y=y, fill=sum))+
+
+# how is the range expected to change?
+(range_change <- ggplot(df.all, aes(x=x, y=y, fill=sum))+
   geom_raster(alpha=0.8)+
   coord_equal()+
   scale_fill_discrete("Habitat\npreference",type=c("#8F8F8F","#8BC8AC"))+
   facet_wrap(~Map, nrow=1)+
-  theme_void()
+  theme_void())
+# looks kinda similar??? idk
+
+# in numbers
+RangeShift <- BIOMOD_RangeSize(proj.current = fungus.curr.bin,proj.future = fungus.fut.bin)
+RangeShift$Compt.By.Models
+# some lost some gained, rel. balanced out it seems.
+
+#Plotting the output
+tmp <- as.data.frame(RangeShift$Diff.By.Pixel,xy=T)
+tmp$values <- ""
+tmp$values[which(tmp$sum==0)] <- "Abs"
+tmp$values[which(tmp$sum==1)] <- "Gain"
+tmp$values[which(tmp$sum==-1)] <- "Stable"
+tmp$values[which(tmp$sum==-2)] <- "Lost"
+
+(change_plot <- ggplot(tmp, aes(x=x, y=y, fill=values))+
+  geom_raster(alpha=0.8)+
+  coord_equal()+
+  scale_fill_manual("",values=c("grey90","#33a02c","#b2df8a", "orange"))+
+  theme_void() )
+# change colors, but otherwise seems ok
+
+
+
+
+
+
+# trying with different variables ----
+# slope; soil properties (ph and moisture); summer air T, growing degree days, and yearly air T most influential
+
+# try 1 temperature and 1 precip var???
+
+# still doing correlations ....----
+
+# i think this will be final attempt, i am so bored
+library(dplyr)
+library(caret)
+
+# Step 1: Correlation matrix for environmental predictors
+cor_matrix <- cor(env_values, use = "pairwise.complete.obs")
+
+# Step 2: Cluster variables using 1 - abs(correlation)
+distance_matrix <- as.dist(1 - abs(cor_matrix))
+cor_clust <- hclust(distance_matrix, method = "complete")
+cut_height <- 0.3  # corresponds to correlation threshold of 0.7
+clusters <- cutree(cor_clust, h = cut_height)
+
+# Step 3: For each cluster, fit univariate logistic regressions and pick best predictor
+get_best_predictor <- function(varnames) {
+  scores <- sapply(varnames, function(var) {
+    df <- data.frame(presence = species_data$presence, x = env_values[[var]])
+    model <- glm(presence ~ x, data = df, family = binomial)
+    null_model <- glm(presence ~ 1, data = df, family = binomial)
+    # McFadden's pseudo-R²
+    r2 <- 1 - logLik(model) / logLik(null_model)
+    return(as.numeric(r2))
+  })
+  varnames[which.max(scores)]
+}
+
+# Step 4: Loop through clusters and select best predictor from each
+selected_vars <- sapply(unique(clusters), function(cluster_id) {
+  vars_in_cluster <- names(clusters[clusters == cluster_id])
+  get_best_predictor(vars_in_cluster)
+})
+
+# Final selection
+selected_vars <- sort(selected_vars)
+selected_vars
+
+# not doing stepwise anymore - but decide whether quadratic terms in the glm----
+
+
+selected_predictors <- c("bio15", "gdd3", "f", "r", "forestaggr", 
+                         "slope", "twi25ss", "srad", "hillshade")
+
+results <- list()
+final_terms <- c()
+
+for (var in selected_predictors) {
+  
+  # build formulas
+  f_linear <- as.formula(paste("presence ~", var))
+  f_quad   <- as.formula(paste("presence ~", var, "+ I(", var, "^2)"))
+  
+  # fit models
+  mod_linear <- glm(f_linear, data = species_data, family = binomial)
+  mod_quad   <- glm(f_quad, data = species_data, family = binomial)
+  
+  # compare AIC
+  aic_linear <- AIC(mod_linear)
+  aic_quad <- AIC(mod_quad)
+  
+  # store result
+  results[[var]] <- data.frame(
+    predictor = var,
+    AIC_linear = aic_linear,
+    AIC_quad = aic_quad,
+    better = ifelse(aic_quad + 2 < aic_linear, "quadratic", "linear")
+  )
+  
+  # record best-fitting term
+  if (aic_quad + 2 < aic_linear) {
+    final_terms <- c(final_terms, var, paste0("I(", var, "^2)"))
+  } else {
+    final_terms <- c(final_terms, var)
+  }
+}
+
+# Combine and view model comparison results
+model_comparison <- do.call(rbind, results)
+print(model_comparison)
+
+# Show final formula
+cat("Final model formula:\n")
+cat("presence ~", paste(final_terms, collapse = " + "), "\n")
+
+
+
+# notes 
+# remove twiss - no effect and can say we wanted as few variables as possible due to
+# not being able to model their changes in the future
+# the rest i can justify
+
+# validation --ORIGINAL ----
+# unsure if correct bc some things changed compared to tp script
+
+# Ensure the data is correct
+fungus <- data.frame(bio15 = species_data$bio15,
+                     bio13 = species_data$bio13,
+                     r = species_data$r,
+                     presence = as.factor(species_data$presence))
+
+set.seed(123)
+cv.error.10 <- rep(0, 10)
+
+for (i in 1:10) {
+  glm.fit <- glm(presence ~ poly(bio15 + bio13 + r, i),  # polynomial of the sum
+                 family = "binomial",
+                 data = fungus)
+  
+  # Use the same dataset used for model fitting
+  cv.error.10[i] <- cv.glm(fungus, glm.fit, K = 10)$delta[1]
+}
+
+cv.error.10
+
+# adding complexity beyond degree 2 or 3 does not improve accuracy meaningfully.
+
+# example with rf model
+set.seed(123)
+fungus$presence<-make.names(fungus$presence)
+# idk what this does lol
+# define training control
+train_control <- trainControl(method = "cv", number = 5, savePredictions = T,
+                              summaryFunction = twoClassSummary, classProbs = T)
+# train model
+model <- train(presence~ ., data = fungus, trControl = train_control, method = "rf")
+
+# plot roc
+selectedIndices <- model$pred$mtry == 3
+ROC <- roc(as.numeric(model$pred$obs[selectedIndices]),
+           as.numeric(model$pred$X0[selectedIndices]), auc = TRUE)
+confMat <- caret::confusionMatrix(data = model$pred$obs[selectedIndices],
+                                  reference = model$pred$pred[selectedIndices],
+                                  mode= "everything")
+confMat$overall
+par(mfrow=c(1,1))
+plot.roc(smooth(ROC))
+
+
+# k-fold cv: for gam, from chatgpt----
+library(caret)
+library(pROC)
+
+set.seed(123)
+Vero_chama$Veronica_chamaedrys <- make.names(Vero_chama$Veronica_chamaedrys)
+
+# Define train control
+train_control <- trainControl(method = "cv", number = 10,
+                              summaryFunction = twoClassSummary,
+                              classProbs = TRUE, savePredictions = TRUE)
+
+# Train the GAM model
+model_gam <- train(Veronica_chamaedrys ~ bio6 + bio7 + bio15,
+                   data = Vero_chama,
+                   method = "gam",
+                   trControl = train_control,
+                   metric = "ROC",
+                   family = "binomial")
+
+# View results
+model_gam
+library(pROC)
+
+# Extract predictions for a specific resample
+preds <- model_gam$pred
+# Use only one resample (caret returns all folds merged)
+preds_fold <- preds[preds$Resample == "Fold1", ]
+
+roc_obj <- roc(preds_fold$obs, preds_fold$X1)  # X1 = predicted probability for class '1'
+
+plot.roc(roc_obj)
+TSS <- roc_obj$sensitivities + roc_obj$specificities - 1
+max(TSS)  # best threshold
+
+
+
+
+# trying so hard to get tss from ncv----
+
+
+bio15.curr <- env_variables$bio15
+gdd3.curr <- env_variables$gdd3
+summary(values(bio15.curr))
+summary(values(bio15.fu.rcp45))
+
+summary(values(gdd3.curr))
+summary(values(gdd3.fu.rcp45))
+
+
+bio15.fu.clipped <- clamp(bio15.fu.rcp45, lower=min(values(bio15.curr), na.rm=TRUE), 
+                          upper=max(values(bio15.curr), na.rm=TRUE))
+gdd3.fu.clipped <- clamp(gdd3.fu.rcp45, lower=min(values(gdd3.curr), na.rm=TRUE), 
+                         upper=max(values(gdd3.curr), na.rm=TRUE))
+
+# Recreate the biostack with clipped rasters
+biostack.fut.clipped <- c(bio15.fu.clipped, gdd3.fu.clipped, f.fu, r.fu, 
+                          forestaggr.fu, slope.fu, srad.fu, hillshade.fu)
+
+# Set names for the stack
+names(biostack.fut.clipped) <- c("bio15", "gdd3", "r", "f", "forestaggr", "slope", "srad", "hillshade")
+
+

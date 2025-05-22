@@ -259,31 +259,37 @@ ggplot(tmp.df, aes(x=GrainSize, y=value, color=variable))+
 
 # projecting in time----
 # used rcp 85, also try rcp 45
-bio13r.fu <- rast("sdm/covariates_future/bio13_20702099_RCP85.tif")
-bio15r.fu <- rast("sdm/covariates_future/bio15_20702099_RCP85.tif")
-r_r.fu <- rast("sdm/Covariate_currentTime/r.tif")
-biostack.fut <- c(bio13r.fu,bio15r.fu,r_r.fu)
-names(biostack.fut) <- c("bio13", "bio15", "r")
+bio6r.fu <- rast("../data/covariates/covariates_future/bio6_20702099_RCP45.tif")
+bio7r.fu <- rast("../data/covariates/covariates_future/bio7_20702099_RCP45.tif")
+bio15r.fu <- rast("../data/covariates/covariates_future/bio15_20702099_RCP45.tif")
+biostack.fut <- c(bio6r.fu,bio7r.fu,bio15r.fu)
+names(biostack.fut) <- c(paste0("bio",c(6,7,15)))
 
 names(biostack.fut)
 
-fungus.fut.gam <- predict(biostack.fut, gam1, type="response")
-fungus.fut.glm <- predict(biostack.fut, glm1, type="response")
-fungus.fut.rf <- predict(biostack.fut, rf1, type="prob", na.rm=T)[[2]]
+#For computation time, we are going to decrease the resolution of climate data
+## Not to do for your report except if you selected insects
+biostack.fut <- aggregate(biostack.fut,2,"mean",na.rm=T)
+
+
+vero.fut.gam <- predict(biostack.fut, gam1, type="response")
+vero.fut.glm <- predict(biostack.fut, glm1, type="response")
+vero.fut.rf <- predict(biostack.fut, rf1, type="prob", na.rm=T)[[2]]
 ## Make an ensemble based on a weighted mean
-fungus.fut.wmean <- weighted.mean(c(fungus.fut.gam, fungus.fut.glm,
-                                  fungus.fut.rf),
+vero.fut.wmean <- weighted.mean(c(vero.fut.gam, vero.fut.glm,
+                                  vero.fut.rf),
                                 w= c(0.84,0.84, 0.69))
 
+
 # plot the predictions
-fungus.df.cur <- cbind(as.data.frame(fungus.curr.wmean, xy=T, na.rm=T),
+vero.df.cur <- cbind(as.data.frame(vero.curr.wmean, xy=T, na.rm=T),
                      Map="Current")
-fungus.df.fut <- cbind(as.data.frame(fungus.fut.wmean, xy=T, na.rm=T),
+vero.df.fut <- cbind(as.data.frame(vero.fut.wmean, xy=T, na.rm=T),
                      Map="Future")
-tmp.dif <- cbind(as.data.frame(fungus.fut.wmean-fungus.curr.wmean,
+tmp.dif <- cbind(as.data.frame(vero.fut.wmean-vero.curr.wmean,
                                xy=T, na.rm=T),
                  Map="Differences")
-df.all <- rbind(fungus.df.cur, fungus.df.fut, tmp.dif)
+df.all <- rbind(vero.df.cur, vero.df.fut, tmp.dif)
 ggplot(df.all, aes(x=x, y=y, fill=sum))+
   geom_raster(alpha=0.8)+
   coord_equal()+
@@ -294,9 +300,8 @@ ggplot(df.all, aes(x=x, y=y, fill=sum))+
 # actually a good plot!! area reduces in suitability
 
 
-# smth wrong with this, check later 
-PredVal <- extract(fungus.curr.wmean,spData[,1:2],ID=F)
-thr <- ecospat.max.tss(Pred = PredVal, Sp.occ = species_data$presence)$max.threshold
+PredVal <- extract(vero.curr.wmean,spData[,1:2],ID=F)
+thr <- ecospat.max.tss(Pred = PredVal, Sp.occ = spData$Veronica_chamaedrys)$max.threshold
 thr
 
 fungus.curr.bin <- bm_BinaryTransformation(vero.curr.wmean,threshold = thr)
