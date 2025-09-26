@@ -14,17 +14,9 @@ full_families <- pedigree %>%
   filter(!is.na(MumId) & !is.na(DadId))
 
 
-# Convert IDs to numeric (fixes any character/numeric mismatch issues)
-pedigree <- pedigree %>%
-  mutate(across(c(RingId, MumId, DadId), as.numeric))
-
 # Find families where both parents are known
 valid_families <- pedigree %>%
   filter(!is.na(MumId) & !is.na(DadId))
-
-
-
-
 
 
 
