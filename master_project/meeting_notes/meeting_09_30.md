@@ -11,6 +11,6 @@ Discussed during meeting // To do:
 - A few suggestions for how to get a more systematic measure of imputation accuracy & errors: Per individual: confusion matrix for genotypes that are predicted 0.0/1.0/2.0; correlation matrix for all predictions ; Overall: correlation of imputed & real per snp for all individuals; filter based on number of children to see if there is difference
 - Run snipar on 1 family with only supplying pedigree of this family so that it's sure that only these genotypes are used for imputation. Check if better/worse/no change for this family.
 - Potentially add genetic map in a later run. Snipar can accept this file as input but I didn't know we had it so ran without, using a default one. Might improve imputation slightly
-- Also get basic values like % of NA-s per individual (how many snps it didnt impute)
+- Also, get basic values like % of NA-s per individual (how many snps it didnt impute)
 % of incorrectly imputed snp-s (where snipar says e.g. 1.0 while its actually 2.0 etc)
 
