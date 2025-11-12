@@ -60,7 +60,7 @@ counts
 # export family id-s (i.e. id-s of imputed moms) (should correspond to mum so that vcf can be filtered)
 families_df <- data.frame(ID = Families_imputed)
 length(unique(families_df$ID)) # 251 individuals imputed; ?
-
+length(families_df$ID)
 write.table ( families_df,
             file = "master_project/data/family_ids_from_hdf5.txt",
             row.names = FALSE,
@@ -118,7 +118,7 @@ colnames(gen_matrix_relatives) <- sample_ids_relatives
 sample_index <- which(sample_ids_relatives == "M032409") # put relative id here
 snp_index <- which(snp_ids_relatives =="Super-Scaffold_3:1564204:C:A") # out snp of interest here
 
-real_genotype <- gen_matrix_relatives[sample_index,snp_index] # the genotype. Real not necessary as there is no imputed genotype here
+real_genotype <- gen_matrix_relatives[snp_index,sample_index] # the genotype. Real not necessary as there is no imputed genotype here
 real_genotype 
 
 
@@ -134,9 +134,13 @@ na_summary_df <- data.frame(MumId =names(na_summary),
 View(na_summary_df)
 
 (ggplot(na_summary_df, aes(x = percent_missing_snps))+
-  geom_histogram()+
+  geom_histogram(col = "white")+
     ylab("Number of individuals\n")+
-    theme_classic())
+    xlab("\nMissing SNP-s (%)")+
+    theme_classic()+
+    theme(axis.title = element_text(size = 12),
+          axis.text = element_text(size = 12)))
+ggsave("master_project/plots/missing_snp-s_overall.png", dpi = 600)
 
 
 View(sequenced_families_2_children)
@@ -238,12 +242,15 @@ summary_incorrect <- summary_incorrect %>%
   rename(MumId = Sample)
 (histogram_incorrect <- ggplot(summary_incorrect, 
                               aes(x= Percentage))+
-  geom_histogram()+
+  geom_histogram(col = "white")+
     ggtitle("percent of correctly imputed snp-s from 'certain' values")+
     theme_classic()+
-    labs(y = "number of individuals\n")+
-    theme(plot.title = element_text(hjust = 0.5)))
-
+    labs(y = "number of individuals\n", x = "\nPercentage")+
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 12)
+          ))
+ggsave("master_project/plots/correctness_only_certain_snps.png", dpi = 600)
 # Correlation matrix -----
 # start with matrix_imputed_for_comparison & gen_matrix_real_gts
 diff_matrix <- matrix_imputed_for_comparison - gen_matrix_real_gts
@@ -272,7 +279,7 @@ comparison_df_full %>%
   summarise(meandif = (mean(abs(dif))))
 
 
-# check relationship between number of children used for imputation & imputation quality ------
+# check relationship between number of chicks used for imputation & imputation quality ------
 # 1) extract number of children from dataset used to make the imputation dataset
 View(sequenced_families_2_children)
 children_number <- sequenced_families_2_children %>% 
@@ -287,11 +294,19 @@ summary_incorrect <- left_join(summary_incorrect, children_number, by = "MumId")
 summary_incorrect_for_plot  <- summary_incorrect %>% 
   filter(in_families == 1)
 (scatter <- ggplot(summary_incorrect_for_plot, aes (x = children, y = Percentage))+
-  geom_point()+
-  theme_classic())
+  geom_point(colour = "purple")+
+    labs(x = "\nNumber of chicks", y = "Percentage of SNP-s correct\n")+
+  theme_classic()+
+    theme(axis.text = element_text (size = 12),
+          axis.title = element_text(size = 12)))
+ggsave("master_project/plots/chicks_vs_correctness_only_certain_values.png", dpi = 600)
 View(summary_incorrect_for_plot)
 cor(summary_incorrect_for_plot$children, summary_incorrect_for_plot$Percentage, method = "pearson")
-# check against NA values - how many? 
+
+
+# with rounded values 
+
+
 
 # hist with probabilities rounded to nearest even value -----
 comparison_df_full <- comparison_df_full %>% 
@@ -311,7 +326,10 @@ summary_incorrect_rounded <- summary_incorrect_rounded %>%
     ggtitle("percent of correctly imputed snp-s if values are rounded")+
     theme_classic()+
     labs(y = "number of individuals\n")+
-    theme(plot.title = element_text(hjust = 0.5)))
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 12)))
+ggsave("master_project/plots/correctness_rounded_values.png")
 
 # again, check relationship with number of children,
 # this time with the rounded values
@@ -322,8 +340,12 @@ summary_incorrect_rounded <- left_join(summary_incorrect_rounded, children_numbe
 summary_incorrect_rounded_filtered <- summary_incorrect_rounded %>% 
   filter(in_families == 1)
 (scatter_rounded <- ggplot(summary_incorrect_rounded_filtered, aes (x = children, y = Percentage))+
-    geom_point()+
-    theme_classic())
+    geom_point(colour = "purple")+
+    labs(x = "\nNumber of chicks", y = "Percentage of SNP-s correct\n")+
+    theme_classic()+
+    theme(axis.text = element_text (size = 12),
+          axis.title = element_text(size = 12)))
+ggsave("master_project/plots/chicks_vs_correctness_with_rounded_values.png", dpi = 300)
 cor(summary_incorrect_rounded_filtered$children, summary_incorrect_rounded_filtered$Percentage, method = "pearson", use = "complete.obs")
 
 
@@ -413,6 +435,25 @@ summary_dups <- comparison_df_dups %>%
   ungroup()
 View(summary_dups)
 
+# try to link with na %
+na_summary_unique_dups_df <- na_summary_dups_df
+na_summary_unique_dups_df <- na_summary_dups_df %>%
+  mutate(across(1, ~ make.unique(as.character(.x))))
+View(na_summary_unique_dups_df)
+dups_na_accuracy<- left_join (summary_dups, na_summary_unique_dups_df, by = "MumId")
+View(dups_na_accuracy)
+(misssingness_vs_accuracy_dups<-
+    ggplot(dups_na_accuracy, aes(x = percent_missing_snps, y = mean_abs_diff )) + geom_point(color = "purple")+
+    theme_classic()+
+    labs (x= "\nPercentage of NA snp-s", y = "mean absolute difference\n")+
+    theme(axis.text = element_text(size = 12),
+          axis.title=element_text(size = 12)))
+ggsave("master_project/plots/misssingness_vs_accuracy_dups.png", dpi = 600)
+
+model <- lm(percent_missing_snps~mean_abs_diff, data =dups_na_accuracy )
+summary(model)
+plot(model)
+cor(dups_na_accuracy$percent_missing_snps,dups_na_accuracy$mean_abs_diff )
 # try to do an average for the dups at each snp need to double check ! -----
 unique_base <- unique(base_names)
 # pre-allocate matrix for averaged values
@@ -594,3 +635,15 @@ summary_dups <-summary_dups %>%
   group_by(basename) %>% 
   summarise(dif_range = max(mean_abs_diff)-min(mean_abs_diff)))
 View(summary_dups_to_check)
+
+# try to see if rel between accuracy and missingness???----
+str(summary_incorrect_rounded)
+summary_incorrect_rounded <- left_join(summary_incorrect_rounded, na_summary_df, by = 'MumId')
+(misssingness_vs_accuracy<-
+  ggplot(summary_incorrect_rounded, aes(x = percent_missing_snps, y = Percentage )) + geom_point(color = "purple")+
+    theme_classic()+
+    labs (x= "\nPercentage of NA snp-s", y = "Percentage of correct snp-s (rounded)\n")+
+    theme(axis.text = element_text(size = 12),
+          axis.title=element_text(size = 12)))
+ggsave("master_project/plots/misssingness_vs_accuracy.png", dpi = 600)
+# WHY ? 
