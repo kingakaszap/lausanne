@@ -647,3 +647,20 @@ summary_incorrect_rounded <- left_join(summary_incorrect_rounded, na_summary_df,
           axis.title=element_text(size = 12)))
 ggsave("master_project/plots/misssingness_vs_accuracy.png", dpi = 600)
 # WHY ? 
+# missingness - is it similar to actually inferred individuals?----
+missingness_by_snp_test <- data.frame(
+  snp_id = rownames(DosMat_imputed),
+  n_NA = rowSums(is.na(DosMat_imputed)),
+  percent_NA = rowMeans(is.na(DosMat_imputed)) * 100
+)
+
+View(missingness_by_snp_test)
+# missing 
+
+sum(missingness_by_snp_test$n_NA>(ncol(DosMat_imputed)*0.5)) # 5%
+# 10953 out of 2000 000 snp missing in over 50% of inds
+8890/nrow(DosMat_imputed) # 4.2 of snp-s missing in over 50% inds
+sum(missingness_by_snp_test$n_NA<(ncol(DosMat_imputed)*0.1))
+# 78% of snp-s are present in >= 90% of individuals
+161332/nrow(DosMat_imputed) 
+# what cutoff???
