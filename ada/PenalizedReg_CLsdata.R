@@ -100,11 +100,19 @@ plot(lasso.cv)
 bestlam.min=lasso.cv$lambda.min
 bestlam.1se=lasso.cv$lambda.1se
 
+# the two lines - cant say that one is statistically better than the other
+# bc both lie within stdev
+# 2 models (represented by the 2 lines)
+# explain equally well our variable of interest 
+# but the line on the right does it with fewer variables (?)
+# also interesting how many variables the model has selected
+
 # 2) Fit the model 
 lasso.fit=glmnet(X.train,y.train,alpha = 1)
 coef(lasso.fit,s=bestlam.1se)[which(coef(lasso.fit,s=bestlam.1se)!=0),,drop=FALSE]
 coef(lasso.fit,s=bestlam.min)[which(coef(lasso.fit,s=bestlam.min)!=0),,drop=FALSE]
 n.var.lasso=length(which(coef(lasso.fit,s=bestlam.min)[-1]!=0)) # number of variables (excluding the intercept) different from 0 (for summary table)
+# make sure understand output - dependency score, etc, negative coef - negative effect on efficiency score??
 
 # plot the coefficient path
 labels=colnames(X)
@@ -112,6 +120,10 @@ labels=ifelse(coef(lasso.fit,s=bestlam.min)[-1]==0,"",labels)
 plot(lasso.fit, xvar="lambda",xlim=c(-10.3,-2))
 abline(v=c(log(bestlam.min),log(bestlam.1se)), lty=2,col="grey")
 text(rep(-10.5, length(labels)), coef(lasso.fit)[-1,length(lasso.fit$lambda)], labels, pos=4,cex=0.6)
+# can see that at the end you have all 0 for coefs except for a few coefs.
+# we have 4 vars dif from 0 while all others = 0
+
+
 
 # 3) Predictions
 lasso.pred=predict(lasso.fit, s=bestlam.min, newx = X.test)
@@ -167,3 +179,5 @@ n.var=c(n.var.lr,n.var.ridge,n.var.lasso,n.var.en)
 
 table=cbind(mse,n.var)
 rownames(table)=c("OLS","ridge","lasso","elastic net")
+
+table
