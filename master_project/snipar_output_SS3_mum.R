@@ -2,7 +2,6 @@
 # libs ----
 # if (!requireNamespace("BiocManager", quietly = TRUE))
 #  install.packages("BiocManager")
-
 # BiocManager::install("SNPRelate")
 
 library(SNPRelate)
@@ -21,8 +20,9 @@ Samples = read.gdsn(index.gdsn(DATA, "sample.id"))
 
 gen_matrix_real_gts <- snpgdsGetGeno('master_project/data/inferred_genotypes_from_snipar_with_id.gds')
 dim(gen_matrix_real_gts)
+colnames(gen_matrix_real_gts)
 gen_matrix_real_gts<- t(gen_matrix_real_gts)
-View(gen_matrix_real_gts)
+# View(gen_matrix_real_gts)
 ls.gdsn(DATA)
 head(read.gdsn(index.gdsn(DATA, "snp.position")), 10) # but these are the ones that correspond to the hdf5 positions.
 
@@ -31,7 +31,7 @@ sample_ids_real_gts<- read.gdsn(index.gdsn(DATA, "sample.id")) # and this is the
 snp_pos_real_gts <- read.gdsn(index.gdsn(DATA,"snp.position" ))
 
 length(sample_ids_real_gts)
-
+dim(gen_matrix_real_gts)
 rownames(gen_matrix_real_gts) <-paste0(snp_pos_real_gts)
 colnames(gen_matrix_real_gts) <- paste0(sample_ids_real_gts)
 # imputed genotypes of mums- output from snipar----
@@ -85,7 +85,7 @@ length(dosages_vector)
 
 # hist of imputed values
 hist(dosages_vector, breaks = 50, xlab = "Dosage" )
-families # for exchanging the initial id value
+# families # for exchanging the initial id value
 
 
 # check specific snp-s of duplicated individuals-----
@@ -127,11 +127,11 @@ real_genotype
 
 # imputed dataset: DosMat_imputed
 
-View(DosMat_imputed) # includes duplicates too.
+# View(DosMat_imputed) # includes duplicates too.
 na_summary <-colMeans(is.na(DosMat_imputed)*100)
 na_summary_df <- data.frame(MumId =names(na_summary),
                             percent_missing_snps = na_summary)
-View(na_summary_df)
+# View(na_summary_df)
 
 (ggplot(na_summary_df, aes(x = percent_missing_snps))+
   geom_histogram(col = "white")+
@@ -143,19 +143,22 @@ View(na_summary_df)
 ggsave("master_project/plots/missing_snp-s_overall.png", dpi = 600)
 
 
-View(sequenced_families_2_children)
+# View(sequenced_families_2_children)
 children_number <- sequenced_families_2_children %>% 
   group_by(MumId) %>% 
   mutate(in_families = n_distinct(DadId)) %>% 
   summarise(children = n(),
             in_families = first(in_families))
-View(children_number)
+# View(children_number)
 
 na_summary_df <- left_join(na_summary_df, children_number, by = "MumId")
 na_summary_df_filtered <- na_summary_df %>% 
   filter(in_families == 1)
 
 (scatter_na <- ggplot(na_summary_df_filtered, aes (x = children, y = percent_missing_snps))+
+    geom_point()+
+    theme_classic())
+(scatter_na_all <- ggplot(na_summary_df, aes (x = children, y = percent_missing_snps))+
     geom_point()+
     theme_classic())
 
@@ -168,7 +171,9 @@ na_summary_df_filtered <- na_summary_df %>%
 # for now.
 
 matrix_imputed_for_comparison<- DosMat_imputed[, colnames(DosMat_imputed)%in% sample_ids_real_gts]
+# with duplicates --->
 
+# back to only keeping 1 dup----
 length(sample_ids_real_gts)
 # remove dups except 1st occurence
 matrix_imputed_for_comparison <- matrix_imputed_for_comparison[, !duplicated(colnames(matrix_imputed_for_comparison))]
@@ -194,9 +199,9 @@ comparison_df <- data.frame(
 
 comparison_df$Match <- ifelse(is.na(comparison_df$Predicted) | is.na(comparison_df$Actual), NA,
                               comparison_df$Predicted == comparison_df$Actual)
-View(comparison_df)
+# View(comparison_df)
 comparison_df_nona <- comparison_df %>% filter(!is.na(Predicted))
-View(comparison_df_nona)
+# View(comparison_df_nona)
 
 nrow(comparison_df_nona)
 # 29 955 529
@@ -237,7 +242,7 @@ conf_matrix
 summary_incorrect <- comparison_df_nona %>% 
   group_by(Sample) %>% 
   summarise(Percentage = sum(Match == TRUE)/n()*100)
-View(summary_incorrect)
+# View(summary_incorrect)
 summary_incorrect <- summary_incorrect %>% 
   rename(MumId = Sample)
 (histogram_incorrect <- ggplot(summary_incorrect, 
@@ -254,7 +259,7 @@ ggsave("master_project/plots/correctness_only_certain_snps.png", dpi = 600)
 # Correlation matrix -----
 # start with matrix_imputed_for_comparison & gen_matrix_real_gts
 diff_matrix <- matrix_imputed_for_comparison - gen_matrix_real_gts
-View(diff_matrix)
+# View(diff_matrix)
 
 x_full <- as.vector(matrix_imputed_for_comparison)
 y <- as.vector(gen_matrix_real_gts)
@@ -281,14 +286,14 @@ comparison_df_full %>%
 
 # check relationship between number of chicks used for imputation & imputation quality ------
 # 1) extract number of children from dataset used to make the imputation dataset
-View(sequenced_families_2_children)
+# View(sequenced_families_2_children)
 children_number <- sequenced_families_2_children %>% 
   group_by(MumId) %>% 
   mutate(in_families = n_distinct(DadId)) %>% 
   summarise(children = n(),
             in_families = first(in_families))
-View(children_number)
-View(summary_incorrect)
+# View(children_number)
+# View(summary_incorrect)
 summary_incorrect
 summary_incorrect <- left_join(summary_incorrect, children_number, by = "MumId")
 summary_incorrect_for_plot  <- summary_incorrect %>% 
@@ -300,7 +305,7 @@ summary_incorrect_for_plot  <- summary_incorrect %>%
     theme(axis.text = element_text (size = 12),
           axis.title = element_text(size = 12)))
 ggsave("master_project/plots/chicks_vs_correctness_only_certain_values.png", dpi = 600)
-View(summary_incorrect_for_plot)
+# View(summary_incorrect_for_plot)
 cor(summary_incorrect_for_plot$children, summary_incorrect_for_plot$Percentage, method = "pearson")
 
 
@@ -317,7 +322,7 @@ comparison_df_full<- comparison_df_full %>%
 summary_incorrect_rounded <- comparison_df_full %>% 
   group_by(Sample) %>% 
   summarise(Percentage = sum(match_rounded == TRUE)/n()*100)
-View(summary_incorrect_rounded)
+# View(summary_incorrect_rounded)
 summary_incorrect_rounded <- summary_incorrect_rounded %>% 
   rename(MumId = Sample)
 (histogram_incorrect <- ggplot(summary_incorrect_rounded, 
@@ -357,7 +362,7 @@ dim(matrix_imputed__with_dups)
 matrix_imputed_dups <- matrix_imputed__with_dups[, duplicated(colnames(matrix_imputed__with_dups)) 
                                                  | duplicated(colnames(matrix_imputed__with_dups), fromLast = TRUE)]
 dim(matrix_imputed_dups)
-View(matrix_imputed_dups)
+# View(matrix_imputed_dups)
 
 length(unique(colnames(matrix_imputed_dups)))
 # 60 individuals are duplicated !!! ???
@@ -368,7 +373,7 @@ print(unique(colnames(matrix_imputed_dups)))
 na_summary_dups <-colMeans(is.na(matrix_imputed_dups)*100)
 na_summary_dups_df <- data.frame(MumId =names(na_summary_dups),
                             percent_missing_snps = na_summary_dups)
-View(na_summary_dups_df)
+# View(na_summary_dups_df)
 # up until now i think it is ok
 
 # compare the different imputation accuracies 
@@ -399,7 +404,7 @@ for (i in seq_along(duplicates_all)) {
   }
 }
   
-View(dif_matrix_dups) 
+# View(dif_matrix_dups) 
 
 colnames(matrix_imputed_dups) <- make.unique(colnames(matrix_imputed_dups))
 
@@ -433,15 +438,15 @@ summary_dups <- comparison_df_dups %>%
   summarise (
              mean_abs_diff = mean(abs(dif))) %>% 
   ungroup()
-View(summary_dups)
+# View(summary_dups)
 
 # try to link with na %
 na_summary_unique_dups_df <- na_summary_dups_df
 na_summary_unique_dups_df <- na_summary_dups_df %>%
   mutate(across(1, ~ make.unique(as.character(.x))))
-View(na_summary_unique_dups_df)
+# View(na_summary_unique_dups_df)
 dups_na_accuracy<- left_join (summary_dups, na_summary_unique_dups_df, by = "MumId")
-View(dups_na_accuracy)
+# View(dups_na_accuracy)
 (misssingness_vs_accuracy_dups<-
     ggplot(dups_na_accuracy, aes(x = percent_missing_snps, y = mean_abs_diff )) + geom_point(color = "purple")+
     theme_classic()+
@@ -488,7 +493,7 @@ comparison_df_avg <- comparison_df_avg %>%
   filter(!is.na(Predicted)) %>%
   mutate(dif = Actual - Predicted)
 
-View(comparison_df_avg)
+# View(comparison_df_avg)
 # add the avg dif as a column for duplicates ----
 avg_base_names <- colnames(imputed_avg_mat)
 
@@ -505,7 +510,7 @@ dup_base_names <- sub("\\.\\d+$", "", summary_dups$MumId)
 # Add new column with averaged mean absolute difference
 summary_dups$mean_abs_diff_avg <- mean_abs_dif_avg[dup_base_names]
 
-View(summary_dups)
+# View(summary_dups)
 
 # look at avg dif between mum and dad genotypes ----
 # family to look at first: 
@@ -527,7 +532,7 @@ M020884_family <- data.frame(
   Dad2_M032415 = Dad2_M032415
 )
 
-View(M020884_family)
+# View(M020884_family)
 M020884_family <- M020884_family %>% 
   mutate(dif_from_M026602 =abs(M020884- Dad1_M026602),
          dif_from_M032415 = abs(M020884-Dad2_M032415))
@@ -634,7 +639,7 @@ summary_dups <-summary_dups %>%
 (summary_dups_to_check <- summary_dups %>% 
   group_by(basename) %>% 
   summarise(dif_range = max(mean_abs_diff)-min(mean_abs_diff)))
-View(summary_dups_to_check)
+# View(summary_dups_to_check)
 
 # try to see if rel between accuracy and missingness???----
 str(summary_incorrect_rounded)
@@ -653,8 +658,17 @@ missingness_by_snp_test <- data.frame(
   n_NA = rowSums(is.na(DosMat_imputed)),
   percent_NA = rowMeans(is.na(DosMat_imputed)) * 100
 )
+(ggplot (missingness_by_snp_test, aes(x = percent_NA))+
+    geom_histogram(col = "white")+
+    ggtitle("missingness by snp-s in test mums")+
+    theme_classic()+
+    labs(y = "number of snps\n")+
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 12)))
+ggsave("master_project/plots/snps_missing_testmums.png", dpi = 600)
 
-View(missingness_by_snp_test)
+# View(missingness_by_snp_test)
 # missing 
 
 sum(missingness_by_snp_test$n_NA>(ncol(DosMat_imputed)*0.5)) # 5%
@@ -664,3 +678,65 @@ sum(missingness_by_snp_test$n_NA<(ncol(DosMat_imputed)*0.1))
 # 78% of snp-s are present in >= 90% of individuals
 161332/nrow(DosMat_imputed) 
 # what cutoff???
+# # try everything with removing all duplicates ------
+dup_cols <- names(which(table(colnames(DosMat_imputed)) > 1))
+length(dup_cols)
+# keep only columns that are NOT duplicated
+matrix_no_dups <- DosMat_imputed[, !colnames(DosMat_imputed) %in% dup_cols]
+# and have gt-s
+# Find the intersection
+common_samples <- intersect(colnames(matrix_no_dups), colnames(gen_matrix_real_gts))
+length(common_samples)  # how many match
+matrix_no_dups_sub <- matrix_no_dups[, common_samples]
+gen_matrix_real_gts_sub <- gen_matrix_real_gts[, common_samples]
+
+# flatten and make comparison
+x_nodups <- as.vector(matrix_no_dups_sub)
+y_nodups <- as.vector(gen_matrix_real_gts_sub)
+
+snp_labels_nodups <- rep(rownames(matrix_no_dups_sub), times = ncol(matrix_no_dups_sub))
+sample_labels_nodups <- rep(colnames(matrix_no_dups_sub), each = nrow(matrix_no_dups_sub))
+
+comparison_df_nodups <- data.frame(
+  SNP = snp_labels_nodups,
+  Sample = sample_labels_nodups,
+  Predicted = x_nodups,
+  Actual = y_nodups,
+  stringsAsFactors = FALSE
+)
+comparison_df_nodups <- comparison_df_nodups %>% filter(!is.na(Predicted))
+comparison_df_nodups$dif <- comparison_df_nodups$Predicted - comparison_df_nodups$Actual
+
+comparison_df_nodups <- comparison_df_nodups %>% 
+  mutate(Rounded = round(Predicted)) %>% 
+  mutate(match_rounded =(Actual == Rounded))
+
+summary_incorrect_rounded_nodups <- comparison_df_nodups %>% 
+  group_by(Sample) %>% 
+  summarise(Percentage = sum(match_rounded == TRUE)/n()*100)
+# View(summary_incorrect_rounded)
+summary_incorrect_rounded_nodups <- summary_incorrect_rounded_nodups %>% 
+  rename(MumId = Sample)
+(histogram_incorrect_nodups <- ggplot(summary_incorrect_rounded_nodups, 
+                                      aes(x= Percentage))+
+    geom_histogram(col = "white")+
+    ggtitle("percent of correctly imputed snp-s if values are rounded")+
+    theme_classic()+
+    labs(y = "number of individuals\n")+
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 12)))
+ggsave("master_project/plots/correctness_rounded_values_nodups.png")
+
+# thank fuck
+
+summary_incorrect_rounded_nodups <- left_join(summary_incorrect_rounded_nodups, children_number, by = "MumId")
+head(summary_incorrect_rounded_nodups)
+(scatter <- ggplot(summary_incorrect_rounded_nodups, aes (x = children.x, y = Percentage))+
+    geom_point(colour = "purple")+
+    labs(x = "\nNumber of chicks", y = "Percentage of SNP-s correct\n")+
+    theme_classic()+
+    theme(axis.text = element_text (size = 12),
+          axis.title = element_text(size = 12)))
+# fab
+ggsave("master_project/plots/chicks_vs_correctness_only_certain_values_nodups.png", dpi = 600)

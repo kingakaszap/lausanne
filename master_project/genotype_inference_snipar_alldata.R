@@ -48,8 +48,19 @@ missingness_by_snp <- data.frame(
   percent_NA = rowMeans(is.na(DosMat_genotype_inference)) * 100
 )
 
-View(missingness_by_snp)
+# View(missingness_by_snp)
 # missing 
+(ggplot (missingness_by_snp, aes(x = percent_NA))+
+    geom_histogram(col = "white")+
+    ggtitle("missingness by snp-s in inferred set")+
+    theme_classic()+
+    labs(y = "number of snps\n")+
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text = element_text(size = 12),
+          axis.title = element_text(size = 12)))
+ggsave("master_project/plots/snps_missing_inferenceset.png", dpi = 600)
+
+
 
 sum(missingness_by_snp$n_NA>(ncol(DosMat_genotype_inference)*0.5)) # 4.7%
 9712/nrow(DosMat_genotype_inference)
