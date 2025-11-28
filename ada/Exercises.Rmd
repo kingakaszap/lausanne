@@ -1,0 +1,291 @@
+---
+title: "Clustering - exercises"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r,message=FALSE,warning=FALSE}
+library(RColorBrewer)
+library(factoextra)
+library(mclust)
+library(cluster)
+```
+
+## The data
+
+Dataset: cancer cell line microarray data.
+
+```{r}
+# Load the data
+load(file="/Users/dsesia/Desktop/Teaching/Clustering/data.RData")
+load(file="/Users/dsesia/Desktop/Teaching/Clustering/labs.RData")
+```
+
+```{r}
+dim(data)
+```
+
+The dataset contains `r nrow(data)` observations and `r ncol(data)` variables (genes). $x_{i,j}$ is the entry of the matrix at line $i$ and column $j$ and it represents the gene $j$ expression in sample $i$.
+
+The data look like this:
+
+```{r}
+data[1:4,1:6]
+```
+
+For our analysis we will consider the most variable genes and then we will normalize the data:
+
+* Select the 50 most variable genes 
+* Scale the data by using the R function <span style="color:blue">scale()</span>. This function is used to scale the columns of a numeric matrix. In particular each entry $x_{i,j}$ of column $X_i$ is transformed in the following way: $x_{i,j}^{\text{scaled}}=\frac{x_{i,j} - \text{mean}(X_i)}{\text{sd}(X_i)}$
+
+```{r}
+var=apply(data,2,function(x) var(x,na.rm = TRUE))
+var=var[order(var,decreasing = TRUE)]
+more.var=names(var)[1:50]
+data.var=data[,more.var]
+data.var=scale(data.var) #
+```
+
+For every sample we also know its cancer type. This information is contained in the vector "labs". 
+
+```{r}
+labs
+```
+
+In particular, there are 4 different types of cancer: COLON, LEUKEMIA, MELANOMA and NSCLC (Non-Small Cells Lung Cancer). \
+We can see how many samples there are for each type by using the R function <span style="color:blue">table()</span>.
+
+```{r}
+table(labs)
+```
+
+This information is our ground truth, we will consider it for evaluating and comparing different clusters algorithms. 
+
+## Distance matrix
+
+In order to perform clustering on our data, we first need to compute a **distance matrix**. We can do that by using the function <span style="color:blue">dist()</span> (package "stats"). Note that the default distance measure is the euclidean. We can change it by specifying the method that we prefer (ex: "euclidean", "maximum", "manhattan", "binary", ...).
+
+```{r}
+dist.matrix=dist(data.var)
+as.matrix(dist.matrix)[1:5,1:5]
+```
+
+We can visualize our distance matrix with a heatmap:
+
+```{r,out.width="50%"}
+# color palette 
+col <- colorRampPalette(brewer.pal(9, "GnBu"))(50)
+
+# assign each cancer type a color
+temp <- as.numeric(as.factor(labs))
+colsamples <- brewer.pal(4, "PiYG")[temp]
+
+heatmap(as.matrix(dist.matrix),Colv = NA, Rowv = NA,col=col,RowSideColors=colsamples,ColSideColors=colsamples)
+legend(x="right",legend=c("COLON","LEUKEMIA","MELANOMA","NSCLC"), 
+     fill=brewer.pal(4, "PiYG"),cex=0.5)
+```
+
+## DBSCAN
+
+The clustering algorithm DBSCAN can be run in R with the function <span style="color:blue">dbscan()</span> (package "dbscan")
+
+```{r}
+library(dbscan)
+```
+
+*Remark*: DBSCAN requires two input parameters: **ε** and **minPts** (the desired minimum cluster size).
+One way for choosing ε is by using a k-distance graph (i.e. the distance to the k = minPts-1 nearest neighbor ordered from the largest to the smallest value). Good values of ε are where this plot shows an "elbow".
+Notice that if ε is too small, a large part of the points will be considered as noise, whereas if ε is too  big, the majority of objects will be clustered in the same unique cluster.
+
+```{r,out.width="50%"}
+nearest.dist=c()
+dist.matrix=as.matrix(dist.matrix)
+for(i in 1:ncol(dist.matrix)){
+  temp=dist.matrix[,i]
+  temp=temp[order(temp)]
+  nearest.dist[i]=temp[3]
+}
+plot(1:length(nearest.dist),nearest.dist[order(nearest.dist,decreasing = TRUE)],xlab = "sample",ylab = "Distance to nearest neighbor")
+abline(h=7)
+```
+
+```{r,out.width="50%"}
+db=dbscan(data.var, eps = 7, minPts = 3)
+p=fviz_cluster(db, data = data.var, stand = FALSE,repel=TRUE, show.clust.cent = FALSE,palette = brewer.pal(6, "Paired")[-1], ggtheme = theme_classic(),labelsize=5)
+p
+```
+
+Same plot but colored by true labels
+
+```{r,out.width="50%"}
+for(i in 1:length(unique(p$data$cluster))){
+  grp.i <- p$data[p$data$cluster == i, ][chull(p$data[p$data$cluster == i, c("x","y")]),]  # hull values for cluster i
+  if(i==1) all_hulls=grp.i
+  if(i>1) all_hulls=rbind(all_hulls,grp.i)
+}
+
+coord=as.data.frame(prcomp(data.var,scale. = TRUE)$x[,1:2])
+
+ggplot(data = coord) + 
+  geom_point(aes(x = PC1, y = PC2, color = as.factor(labs))) +
+  theme_classic()+ labs(x = p$labels$x, y = p$labels$y)+
+  guides(color=guide_legend(title="Cancer type"))+
+  geom_polygon(data = all_hulls, aes(x = x, y = y,group = as.factor(cluster)), alpha = 0.1)
+```
+
+
+**Silhouette Analysis**
+```{r,out.width="50%"}
+sil <- silhouette(db$cluster,dist.matrix)
+fviz_silhouette(sil,palette = brewer.pal(length(unique(db$cluster)), "Paired")) + theme_classic()
+```
+
+**Adjusted Rand Index**
+
+Since we know the true classification of the cell lines, we can compare the result of clustering to the ground truth.
+We compute the Adjusted Rand Index (ARI) using the R function <span style="color:blue">adjustedRandIndex()</span> contained in package "mclust".
+
+```{r}
+adjustedRandIndex(labs,db$cluster)
+```
+
+
+## Gaussian Mixture Models (GMM)
+
+We now perform clustering using GMM, using the function <span style="color:blue">Mclust()</span> (package "mclust"). The parameter G indicates the number of mixture components (default is G=1:9)
+
+```{r}
+gmm <- Mclust(data.var)
+summary(gmm)
+```
+
+The number of mixing components and the covariance parametrization are selected using the Bayesian Information Criterion (BIC). BIC is a penalised (penalty for the number of estimated parameters) form of the log likelihood. We want to maximize it.
+
+```{r,out.width="50%"}
+summary(gmm$BIC)
+plot(gmm, what = "BIC", legendArgs = list(x = "bottomleft"))
+```
+
+The possible models refer to different geometric characteristics of the models (volume, shape, orientation of the covariances across groups).
+
+![](/Users/dsesia/Desktop/im1.jpg){width=50%}
+
+**Visualization**
+
+In order to visualize the data we want to project our data in a suitable 2-dim space. We can do that using the function <span style="color:blue">MclustDR()</span>. The directions that mostly separate the estimated clusters are recovered using the default value 1
+
+```{r,out.width="50%"}
+drgmm=MclustDR(gmm,lambda = 0.998)
+# drgmm=MclustDR(gmm,lambda = 1)
+```
+
+Contour plot of estimated mixture densities
+```{r,out.width="50%"}
+plot(drgmm,what="contour",dimens = c(1,2))
+```
+
+Uncertainty boundaries (the uncertainty is shown using a greyscale with darker regions indicating higher uncertainty)
+```{r,out.width="50%"}
+plot(drgmm,what="boundaries")
+```
+
+Same plot colored by true cell type.
+```{r,out.width="50%"}
+ggplot(data = as.data.frame(drgmm$dir)) + 
+  geom_point(aes(x = Dir1, y = Dir2, color = as.factor(labs))) +
+  theme_classic()+ labs(x = "Dir1", y = "Dir2")+
+  guides(color=guide_legend(title="Cell type"))
+```
+
+**Silhouette analysis**
+```{r,out.width="50%"}
+sil <- silhouette(gmm$classification,dist.matrix)
+fviz_silhouette(sil,palette = brewer.pal(length(unique(gmm$classification)), "Paired")) + theme_classic()
+```
+
+**Adjusted Rand Index**
+```{r}
+adjustedRandIndex(labs,gmm$classification)
+```
+
+
+## Leiden
+
+```{r,message=FALSE}
+library(igraph)
+```
+
+In order to perform clustering with Leiden algorithm we first need to represent the data with a graph. In particular, starting from the distance matrix we want to construct a graph. Each node is an observation and the edges will link the most similar observations. 
+
+How to construct an **adjacency matrix**?
+For example we can consider the 5-nearest neighbors.
+
+```{r}
+n=nrow(data.var)
+adj.mat=matrix(0,nrow = n,ncol=n)
+colnames(adj.mat)=rownames(as.matrix(dist.matrix))
+rownames(adj.mat)=rownames(as.matrix(dist.matrix))
+for(i in 1:ncol(adj.mat)){
+  temp=as.matrix(dist.matrix)[i,]
+  temp=temp[order(temp)]
+  k.nearest=names(temp)[2:6]
+  adj.mat[i,which(colnames(adj.mat)%in%k.nearest)]=1
+  adj.mat[which(colnames(adj.mat)%in%k.nearest),i]=1
+}
+colnames(adj.mat)=rownames(data.var)
+rownames(adj.mat)=rownames(data.var)
+
+adj.mat[1:5,1:5]
+```
+
+Next, we create a graph from the adjacency matrix.
+
+```{r}
+graph <- graph_from_adjacency_matrix(adj.mat, mode = "undirected")
+set.seed(123)
+plot(graph, vertex.color = colsamples,vertex.label.cex=0.5)
+legend(x="right",legend=c("COLON","LEUKEMIA","MELANOMA","NSCLC"), 
+     fill=brewer.pal(4, "PiYG"),cex=0.6)
+```
+
+
+We now can perform Leiden clustering.
+```{r}
+leiden.cl=cluster_leiden(graph, objective_function = "modularity")
+
+colcluster= brewer.pal(leiden.cl$nb_clusters, "Paired")[leiden.cl$membership]
+set.seed(123)
+plot(graph, vertex.color = colcluster,vertex.label.cex=0.5)
+```
+
+*Remark*: Louvain cluster can be done similarly by using the function <span style="color:blue">cluster_louvain()</span>. (Type "?cluster_louvain" for more details).
+
+```{r,out.width="50%"}
+sil <- silhouette(leiden.cl$membership,dist.matrix)
+fviz_silhouette(sil,palette = brewer.pal(leiden.cl$nb_clusters, "Paired")) + theme_classic()
+```
+**Adjusted Rand Index**
+```{r}
+adjustedRandIndex(labs,leiden.cl$membership)
+```
+
+
+## Compare the various clustering methods using the Adjusted Rand Index
+
+Which method performs better?
+
+```{r,message=FALSE}
+# Summary table for ARI
+summ.ARI=matrix(NA,ncol = 2,nrow = 3)
+colnames(summ.ARI)=c("Clustering method","ARI")
+summ.ARI[,1]=c("DBSCAN","GMM","Leiden")
+summ.ARI[1,2]=round(adjustedRandIndex(db$cluster, labs),3)
+summ.ARI[2,2]=round(adjustedRandIndex(gmm$classification,labs),3)
+summ.ARI[3,2]=round(adjustedRandIndex(leiden.cl$membership, labs),3)
+
+knitr::kable(summ.ARI)
+```
+
+

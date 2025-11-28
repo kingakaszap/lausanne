@@ -45,7 +45,7 @@ text(rep(-4.3, length(labels)), coef(lasso.fit)[-1,length(lasso.cv$lambda)], lab
 
 # 1) Finding the optimal lambda
 set.seed(123)
-alpha=0.5
+alpha=0.5 # arbitary alpha value
 en.cv=cv.glmnet(X,y,family = "gaussian", type.measure = "mse",alpha = alpha)
 bestlam=en.cv$lambda.min
 
@@ -56,7 +56,7 @@ coef(en.fit,s=bestlam)
 plot(en.fit, xvar="lambda",xlim=c(-3.5,2.5))
 abline(v=log(bestlam), lty=2,col="grey")
 text(rep(-3.7, length(labels)), coef(en.fit)[-1,length(en.cv$lambda)], labels, pos=4,cex=1)
-
+# the ones that are symmetrical to y = 0 plane are correlated?? i think
 
 #-------------------------------------------------------------------------------
 #### Ridge
@@ -75,3 +75,6 @@ annotations=colnames(X)
 plot(ridge.fit, xvar="lambda",xlim=c(-1.5,9))
 abline(v=log(bestlam), lty=2,col="grey")
 text(-1.5, coef(ridge.fit)[-1,length(ridge.cv$lambda)], annotations, pos=4,cex=1)
+
+# ridge in this case more similar to elastic net;
+# since not doing variable selection, it can better catch relationships (?)

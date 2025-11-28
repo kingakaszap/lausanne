@@ -1,0 +1,6 @@
+This folder contains the results of the scenarios where the migrants come from the GSE.
+It is compartmentalised into 4 folders:
+ 1. Scenarios where the migration rate is 0.
+ 2. Scenarios where the migration rate is 1.
+ 3. Scenarios where the migration rate is 5.
+ 4. Scenarios where the migration rate is 10.
