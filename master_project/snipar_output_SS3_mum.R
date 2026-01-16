@@ -335,6 +335,7 @@ summary_incorrect_rounded <- summary_incorrect_rounded %>%
           axis.text = element_text(size = 12),
           axis.title = element_text(size = 12)))
 ggsave("master_project/plots/correctness_rounded_values.png")
+View(summary_incorrect_rounded)
 
 # again, check relationship with number of children,
 # this time with the rounded values
@@ -438,7 +439,30 @@ summary_dups <- comparison_df_dups %>%
   summarise (
              mean_abs_diff = mean(abs(dif))) %>% 
   ungroup()
-# View(summary_dups)
+ View(summary_dups)
+ 
+# add dad id, but unsure if correct-----
+ summary_dups$occ <- ave(summary_dups$basename, summary_dups$basename, FUN = seq_along)
+ dads_unique <- aggregate(DadId ~ MumId, sequenced_families_2_children,function(x) unique(x))
+ 
+summary_dups_add_dads <-do.call(
+  rbind,
+  lapply(seq_len(nrow(dads_unique)), function(i) {
+    data.frame(
+      MumId = dads_unique$MumId[i],
+      DadId = dads_unique$DadId[[i]],
+      occ = seq_along(dads_unique$DadId[[i]])
+    )}))
+
+summary_dups_with_dads <- merge(
+  summary_dups,
+  summary_dups_add_dads,
+  by.x = c("basename", "occ"),
+  by.y = c("MumId", "occ"),
+  all.x = TRUE
+)
+write.csv(summary_dups_with_dads, "master_project/duplicates_accuracy.csv", row.names = FALSE)
+
 
 # try to link with na %
 na_summary_unique_dups_df <- na_summary_dups_df
@@ -662,19 +686,33 @@ missingness_by_snp_test <- data.frame(
     geom_histogram(col = "white")+
     ggtitle("missingness by snp-s in test mums")+
     theme_classic()+
-    labs(y = "number of snps\n")+
+    labs(y = "number of snps\n", x = "\n% of individuals in which snp is missing")+
     theme(plot.title = element_text(hjust = 0.5),
           axis.text = element_text(size = 12),
           axis.title = element_text(size = 12)))
-ggsave("master_project/plots/snps_missing_testmums.png", dpi = 600)
+ggsave("master_project/plots/snps_missing_testmums.png", dpi = 600, width = 6, height = 4)
 
 # View(missingness_by_snp_test)
 # missing 
-
+str(missingness_by_snp_test)
 sum(missingness_by_snp_test$n_NA>(ncol(DosMat_imputed)*0.5)) # 5%
 # 10953 out of 2000 000 snp missing in over 50% of inds
 8890/nrow(DosMat_imputed) # 4.2 of snp-s missing in over 50% inds
 sum(missingness_by_snp_test$n_NA<(ncol(DosMat_imputed)*0.1))
+# look at where they are
+snp_missing_50inds <- missingness_by_snp_test$n_NA > (ncol(DosMat_imputed) * 0.5)
+
+snps_missing_in_over_50perc <- missingness_by_snp_test$snp_id[snp_missing_50inds]
+
+# put them into a dataframe
+snps_missing_in_over_50perc <- data.frame(snp_id = snps_missing_in_over_50perc)
+
+# check
+head(snps_missing_in_over_50perc)
+View(snps_missing_in_over_50perc)
+
+
+
 # 78% of snp-s are present in >= 90% of individuals
 161332/nrow(DosMat_imputed) 
 # what cutoff???

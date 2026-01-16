@@ -49,11 +49,13 @@ unique(plot_data_froh_100_zoo$M)
     title = "FROH for Crater at year 2121 for K = 100"
   ) +
     theme_classic()+
+    scale_y_continuous(limits = c(0.20, 0.65)) + 
+    
     scale_fill_manual(values = c("#FFEDA9","#F4BD19","#ED8000","#692613")) +
-    theme(axis.title = element_text(size = 16),
+    theme(axis.title = element_text(size = 24),
           legend.position = "none",
           plot.title = element_text(size = 16),
-          axis.text = element_text(size=16)))
+          axis.text = element_text(size=24)))
 ggsave("popgen_results/froh_2121_K100_ZOO.png", dpi = 600,  width = 7.5, height = 6.5)
 anova_result_zoo <- aov(FROHP2 ~ factor(M), data = plot_data_froh_100_zoo)
 summary(anova_result_zoo)
@@ -72,6 +74,7 @@ unique(plot_data_froh_50_zoo$M)
     y = "FROH (Crater)\n",
     title = "FROH for Crater at year 2121 for K = 50"
   ) +
+    scale_y_continuous(limits = c(0.40, 0.65)) + 
     theme_classic()+
     scale_fill_manual(values = c("#FFEDA9","#F4BD19","#ED8000","#692613")) +
     theme(axis.title = element_text(size = 16),
@@ -110,7 +113,7 @@ timeline_data <- all_data_zoo %>%
   )
 
 ggplot(timeline_data,
-       aes(x = factor(Year_factor), y = FROHP2, fill = factor(M))) +
+       aes(x = factor(Year_factor), y = FROHP3, fill = factor(M))) +
   geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
   scale_fill_manual(values = c("#FFEDA9","#F4BD19","#ED8000","#692613")) +
   facet_grid(M ~ K, labeller = label_both, scales = "free_y") +
@@ -124,14 +127,87 @@ ggplot(timeline_data,
     axis.text.x = element_text(angle = 45, hjust = 1),
     panel.spacing = unit(1, "lines")
   )
-ggsave("popgen_results/froh_zoo_evolution.png", dpi = 600, width = 9.5, height = 6.5)
+ggsave("popgen_results/froh_zoo_evolution_FOR_ZOO.png", dpi = 600, width = 9.5, height = 6.5)
+
+
+# shared plot
+plot_data_froh_combined_zoo <- all_data_zoo %>%
+  filter(
+    K %in% c(50, 100),
+    Year == 55702
+  )
+ggplot(plot_data_froh_combined_zoo,
+       aes(x = factor(K), y = FROHP2, fill = factor(M))) +
+  
+  geom_boxplot() +
+  
+  scale_fill_manual(values = c("#FFEDA9","#F4BD19","#ED8000","#692613"),
+                    name = "Migrants per decade (M)") +
+  
+  scale_y_continuous(limits = c(0.22, 0.70)) +
+  
+  labs(
+    x = "\nCarrying capacity (K)",
+    y = "FROH (Crater)\n",
+    title = "Zoo-Crater migration"
+  ) +
+  
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = 16),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    plot.title = element_text(size = 16),
+    axis.text = element_text(size = 16),
+    legend.position = "none"
+  )
+
+ggsave("popgen_results/froh_2121_ALL_ZOO.png", dpi = 600,  width = 7, height = 5)
 
 
 
+plot_data_relchange_ZOO <- all_data_zoo %>%
+  group_by(r) %>%
+  mutate(
+    froh_ref = FROHP2[Year == 55604][1],   # value at Year 55604 for this r
+    RelFROH = (FROHP2 / froh_ref) * 100 - 100
+  ) %>%
+  ungroup()
 
-
-
-
+RELATIVE_plot_data_froh_combined_ZOO <- plot_data_relchange_ZOO %>%
+  filter(
+    K %in% c(50, 100),
+    Year == 55702
+  )
+ggplot(RELATIVE_plot_data_froh_combined_ZOO,
+       aes(x = factor(K), y = RelFROH, fill = factor(M))) +
+  
+  geom_boxplot() +
+  
+  scale_fill_manual(values = c("#FFEDA9","#F4BD19","#ED8000","#692613"),
+                    name = "Migrants per decade (M)") +
+  
+  # scale_y_continuous(limits = c(0.22, 0.70)) +
+  
+  labs(
+    x = "\nCarrying capacity (K)",
+    y = "Change in FROH compared to 2021 (%)\n",
+    title = "Zoo-Crater migration"
+  ) +
+  # geom_line() +
+  scale_y_continuous(limits = c(-25, 60)) +
+  
+  geom_hline(yintercept = 0, linetype = "dashed", lwd = 0.8, colour = "#5E5E5E") +
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = 16),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    plot.title = element_text(size = 16),
+    axis.text = element_text(size = 16),
+    legend.position = "none"
+  )
+ggsave("popgen_results/froh_2121_ALL_zoo_relative.png", dpi = 600,  width = 7, height = 5)
 
 
 

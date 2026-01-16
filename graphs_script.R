@@ -48,12 +48,13 @@ unique(plot_data_froh_l100$M)
     y = "FROH (Crater)\n",
      title = "FROH for Crater at year 2121 for K = 100"
   ) +
+    scale_y_continuous(limits = c(0.2, 0.65)) + 
     theme_classic()+
     scale_fill_manual(values = c("#FFEDA9","#F4BD19","#ED8000","#692613")) +
-    theme(axis.title = element_text(size = 16),
+    theme(axis.title = element_text(size = 24),
           legend.position = "none",
           plot.title = element_text(size = 16),
-          axis.text = element_text(size=16)))
+          axis.text = element_text(size=24)))
 ggsave("popgen_results/froh_2121_K100_GSE.png", dpi = 600,  width = 7.5, height = 6.5)
 
 anova_result <- aov(FROHP2 ~ factor(M), data = plot_data_froh_l100)
@@ -74,11 +75,17 @@ unique(plot_data_froh_l50$M)
     title = "FROH for Crater at year 2121 for K = 50"
   ) +
   theme_classic()+
+    scale_y_continuous(limits = c(0.2, 0.65)) + 
     scale_fill_manual(values = c("#FFEDA9","#F4BD19","#ED8000","#692613")) +
       theme(axis.title = element_text(size = 16),
         legend.position = "none",
         plot.title = element_text(size = 16),
         axis.text = element_text(size=16)))
+anova_result <- aov(FROHP2 ~ factor(M), data = plot_data_froh_l50)
+summary(anova_result)
+TukeyHSD(anova_result)
+
+
 ggsave("popgen_results/froh_2121_K50_GSE.png", dpi = 600, width = 7.5, height = 6.5)
 
 years_to_use <- c(55603, 55612, 55622, 55632, 55642,
@@ -111,7 +118,7 @@ timeline_data_gse <- all_data %>%
 levels(timeline_data_gse$Year_factor)
 
 ggplot(timeline_data_gse,
-       aes(x = factor(Year_factor), y = FROHP2, fill = factor(M))) +
+       aes(x = factor(Year_factor), y = popSizeP2, fill = factor(M))) +
   geom_boxplot(alpha = 0.7, outlier.size = 0.5) +
   scale_fill_manual(values = c("#FFEDA9","#F4BD19","#ED8000","#692613")) +
   facet_grid(M ~ K, labeller = label_both, scales = "free_y") +
@@ -126,3 +133,82 @@ ggplot(timeline_data_gse,
     panel.spacing = unit(1, "lines")
   )
 ggsave("popgen_results/froh_gse_evolution.png", dpi = 600, width = 9.5, height = 6.5)
+str(timeline_data_gse)
+
+
+# shared plot
+plot_data_froh_combined_gse <- all_data %>%
+  filter(
+    K %in% c(50, 100),
+    Year == 55702
+  )
+ggplot(plot_data_froh_combined_gse,
+       aes(x = factor(K), y = FROHP2, fill = factor(M))) +
+  
+  geom_boxplot() +
+  
+  scale_fill_manual(values = c("#FFEDA9","#F4BD19","#ED8000","#692613"),
+                    name = "Migrants per decade (M)") +
+  
+   scale_y_continuous(limits = c(0.22, 0.70)) +
+  
+  labs(
+    x = "\nCarrying capacity (K)",
+    y = "FROH (Crater)\n",
+    title = "GSE-Crater migration"
+  ) +
+  
+  
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = 16),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    plot.title = element_text(size = 16),
+    axis.text = element_text(size = 16),
+    legend.position = "none"
+  )
+
+ggsave("popgen_results/froh_2121_ALL_GSE.png", dpi = 600,  width = 7, height = 5)
+
+# try to do relative change
+plot_data_relchange <- all_data %>%
+  group_by(r) %>%
+  mutate(
+    froh_ref = FROHP2[Year == 55604][1],   # value at Year 55604 for this r
+    RelFROH = (FROHP2 / froh_ref) * 100 - 100
+  ) %>%
+  ungroup()
+
+RELATIVE_plot_data_froh_combined_gse <- plot_data_relchange %>%
+  filter(
+    K %in% c(50, 100),
+    Year == 55702
+  )
+ggplot(RELATIVE_plot_data_froh_combined_gse,
+       aes(x = factor(K), y = RelFROH, fill = factor(M))) +
+  
+  geom_boxplot() +
+  
+  scale_fill_manual(values = c("#FFEDA9","#F4BD19","#ED8000","#692613"),
+                    name = "Migrants per decade (M)") +
+  
+  scale_y_continuous(limits = c(-25, 60)) +
+  
+  labs(
+    x = "\nCarrying capacity (K)",
+    y = "Change in FROH compared to 2021 (%)\n",
+    title = "GSE-Crater migration"
+  ) +
+ # geom_line() +
+  geom_hline(yintercept = 0, linetype = "dashed", lwd = 0.8, colour = "#5E5E5E") +
+  theme_classic() +
+  theme(
+    axis.title = element_text(size = 16),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    plot.title = element_text(size = 16),
+    axis.text = element_text(size = 16),
+    legend.position = "none"
+  )
+ggsave("popgen_results/froh_2121_ALL_GSE_rel.png", dpi = 600,  width = 7, height = 5)
