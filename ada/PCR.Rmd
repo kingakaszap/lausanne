@@ -1,0 +1,70 @@
+---
+title: "Principal component regression - exercises"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r,message=FALSE,warning=FALSE}
+library(factoextra)
+library(RColorBrewer)
+```
+
+
+### Principal component regression
+
+Let us consider a dataset containing IC50 values (first column) for 232 cell lines (rows) that were treated with the drug Dabrafenib. IC50 values indicate the dose that is required to obtain a 50% reduction in cell viability, hence
+the smaller the value the more effective is the drug. The other columns indicate the
+expression of 18909 different genes in the various cell lines. 
+
+```{r}
+load(file="/Users/dsesia/Desktop/Teaching/Dimensionality reduction/Dabrafenib_gene_expression.RData")
+y=data$y
+X=data[,-1]
+X[1:5,1:8]
+```
+Let us scale the data and perform PCA with the R function prcomp ("stats" package).
+```{r}
+X=scale(X)
+pca=prcomp(X,scale = F) 
+```
+
+How much variance do the first PCs explain?
+```{r,out.width="50%"}
+fviz_eig(pca,ncp=10)
+summ=summary(pca)
+summ$importance[,1:20]
+```
+
+```{r}
+data.plot=data.frame(pca$x)
+colnames(data.plot)=c("PC1","PC2")
+
+ggplot(data.plot, aes(x = PC1, y = PC2, colour =y)) +
+  geom_point()+scale_colour_gradientn(colours = brewer.pal(11, "RdYlBu")) +theme_light()
+```
+
+Linear regression on the first 10 PCs. Notice that they are orthogonal!
+```{r,out.width="50%"}
+data.pcs=data.frame(cbind(y,pca$x[,1:10]))
+heatmap(cor(data.pcs[,-1]),Rowv = NA,Colv = NA,main = "Correlation matrix",col=colorRampPalette(brewer.pal(8, "Blues"))(25))
+legend(x="bottomright", legend=c("0", "1"),fill=colorRampPalette(brewer.pal(8, "Blues"))(2))
+```
+
+```{r}
+lr=lm(y~.,data=data.pcs)
+summary(lr)
+```
+
+Retrieve the coefficients for the original variables:
+```{r}
+coeff.pcr=as.matrix(lr$coefficients[-1])
+beta <- pca$rotation[,1:10] %*% coeff.pcr
+#temp=beta[order(abs(beta[,1]),decreasing = TRUE),,drop=FALSE]
+```
+
+*Exercise*: Compare (by dividing the dataset in a training and test set), the performance of PCR vs penalized regression.\
+
+*Remark*: In general PCR will tend to do well in cases when the first few principal components are sufficient to capture most of the variation in the predictors.
+
+

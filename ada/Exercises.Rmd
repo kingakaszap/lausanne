@@ -19,8 +19,8 @@ Dataset: cancer cell line microarray data.
 
 ```{r}
 # Load the data
-load(file="/Users/dsesia/Desktop/Teaching/Clustering/data.RData")
-load(file="/Users/dsesia/Desktop/Teaching/Clustering/labs.RData")
+load(file="data.RData")
+load(file="labs.RData")
 ```
 
 ```{r}
@@ -41,11 +41,14 @@ For our analysis we will consider the most variable genes and then we will norma
 * Scale the data by using the R function <span style="color:blue">scale()</span>. This function is used to scale the columns of a numeric matrix. In particular each entry $x_{i,j}$ of column $X_i$ is transformed in the following way: $x_{i,j}^{\text{scaled}}=\frac{x_{i,j} - \text{mean}(X_i)}{\text{sd}(X_i)}$
 
 ```{r}
+# important to scale the data (each gene in relation to itself)
 var=apply(data,2,function(x) var(x,na.rm = TRUE))
 var=var[order(var,decreasing = TRUE)]
 more.var=names(var)[1:50]
 data.var=data[,more.var]
-data.var=scale(data.var) #
+data.var=scale(data.var) # scale before applying clustering
+# all genes should have the same effect on the clusters
+# eg if one gene is always more expressed, in general, it would have an overly big impact
 ```
 
 For every sample we also know its cancer type. This information is contained in the vector "labs". 
@@ -68,8 +71,9 @@ This information is our ground truth, we will consider it for evaluating and com
 In order to perform clustering on our data, we first need to compute a **distance matrix**. We can do that by using the function <span style="color:blue">dist()</span> (package "stats"). Note that the default distance measure is the euclidean. We can change it by specifying the method that we prefer (ex: "euclidean", "maximum", "manhattan", "binary", ...).
 
 ```{r}
-dist.matrix=dist(data.var)
+dist.matrix=dist(data.var) 
 as.matrix(dist.matrix)[1:5,1:5]
+# the variable names represent cell lines
 ```
 
 We can visualize our distance matrix with a heatmap:
@@ -96,8 +100,11 @@ library(dbscan)
 ```
 
 *Remark*: DBSCAN requires two input parameters: **ε** and **minPts** (the desired minimum cluster size).
+Mean points: number of neighbours to be considered a core point(?)
+epsilon: max distance between 2 points for them to be considered neighbours
 One way for choosing ε is by using a k-distance graph (i.e. the distance to the k = minPts-1 nearest neighbor ordered from the largest to the smallest value). Good values of ε are where this plot shows an "elbow".
 Notice that if ε is too small, a large part of the points will be considered as noise, whereas if ε is too  big, the majority of objects will be clustered in the same unique cluster.
+a way to choose epsilon is to look at the data
 
 ```{r,out.width="50%"}
 nearest.dist=c()
@@ -133,12 +140,19 @@ ggplot(data = coord) +
   theme_classic()+ labs(x = p$labels$x, y = p$labels$y)+
   guides(color=guide_legend(title="Cancer type"))+
   geom_polygon(data = all_hulls, aes(x = x, y = y,group = as.factor(cluster)), alpha = 0.1)
+# a potential issue is that there is only 1 epsilon -> issue for groups with different densities.
 ```
 
 
 **Silhouette Analysis**
 ```{r,out.width="50%"}
 sil <- silhouette(db$cluster,dist.matrix)
+
+# the cluster 0 with negative values are the noise points
+# -> here they are considered as the same cluster
+# so this eg can be used to tell how many points are noise points
+
+# another line of code where noise points are removed
 fviz_silhouette(sil,palette = brewer.pal(length(unique(db$cluster)), "Paired")) + theme_classic()
 ```
 
@@ -149,6 +163,7 @@ We compute the Adjusted Rand Index (ARI) using the R function <span style="color
 
 ```{r}
 adjustedRandIndex(labs,db$cluster)
+# can also do it without the 0 cluster points
 ```
 
 
@@ -158,7 +173,7 @@ We now perform clustering using GMM, using the function <span style="color:blue"
 
 ```{r}
 gmm <- Mclust(data.var)
-summary(gmm)
+summary(gmm) # input needed is the matrix of data
 ```
 
 The number of mixing components and the covariance parametrization are selected using the Bayesian Information Criterion (BIC). BIC is a penalised (penalty for the number of estimated parameters) form of the log likelihood. We want to maximize it.
@@ -166,6 +181,8 @@ The number of mixing components and the covariance parametrization are selected 
 ```{r,out.width="50%"}
 summary(gmm$BIC)
 plot(gmm, what = "BIC", legendArgs = list(x = "bottomleft"))
+# try many different models with different parameters for the gaussians,
+# select the one with the highest log likelihood.
 ```
 
 The possible models refer to different geometric characteristics of the models (volume, shape, orientation of the covariances across groups).
@@ -177,7 +194,7 @@ The possible models refer to different geometric characteristics of the models (
 In order to visualize the data we want to project our data in a suitable 2-dim space. We can do that using the function <span style="color:blue">MclustDR()</span>. The directions that mostly separate the estimated clusters are recovered using the default value 1
 
 ```{r,out.width="50%"}
-drgmm=MclustDR(gmm,lambda = 0.998)
+drgmm=MclustDR(gmm,lambda = 0.998) # altering this param - 1 would be most separation
 # drgmm=MclustDR(gmm,lambda = 1)
 ```
 
