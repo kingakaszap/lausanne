@@ -4,6 +4,10 @@ library(rhdf5)
 library(gdsfmt)
 library(knitr)
 library(tidyverse)
+# data ----
+pedigree <- read_csv("master_project/data/coreccted_consensus_pedigree.txt")
+sequenced <- read_csv("master_project/data/RingIds_seq1.txt")
+sequenced_families_2_children <- read.csv("master_project/data/sequenced_families_2_children.csv")
 
 # snipar output----
 h5ls("master_project/data/Super-Scaffold_3_no_mum_with_map.hdf5")
@@ -18,19 +22,18 @@ colnames(DosMat_imputed_map) <- paste0(Families_imputed_map)
 
 print(Families_imputed_map) # mum id-s
 
-counts <- c(
-  zero = sum(DosMat_imputed_map == 0, na.rm = TRUE),
+counts <- c(zero = sum(DosMat_imputed_map == 0, na.rm = TRUE),
   one  = sum(DosMat_imputed_map == 1, na.rm = TRUE),
   two  = sum(DosMat_imputed_map == 2, na.rm = TRUE),
-  miss = sum(!(DosMat_imputed_map %in% c(0,1,2)))
-)
+  miss = sum(!(DosMat_imputed_map %in% c(0,1,2))))
 counts
 
+head(DosMat_imputed_map)
 # na check -----
 na_summary_map <-colMeans(is.na(DosMat_imputed_map)*100)
 na_summary_df_map <- data.frame(MumId =names(na_summary_map),
                             percent_missing_snps = na_summary_map)
-View(na_summary_df_map)
+# View(na_summary_df_map)
 
 (ggplot(na_summary_df_map, aes(x = percent_missing_snps))+
     geom_histogram(col = "white")+
@@ -41,10 +44,7 @@ View(na_summary_df_map)
           axis.text = element_text(size = 12)))
 ggsave("master_project/plots/missing_snp-s_overall_with_map.png", dpi = 600)
 
-
-# View(sequenced_families_2_children)
-children_number <- sequenced_families_2_children %>% 
-  group_by(MumId) %>% 
+children_number <- sequenced_families_2_children %>% group_by(MumId) %>% 
   mutate(in_families = n_distinct(DadId)) %>% 
   summarise(children = n(),
             in_families = first(in_families))

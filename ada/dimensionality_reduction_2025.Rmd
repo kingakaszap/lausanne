@@ -7,6 +7,8 @@ date: "2025-12-04"
 ```{r,message=FALSE,warning=FALSE}
 library(factoextra)
 library(RColorBrewer)
+setwd("C:/Users/Kinga/OneDrive - Université de Lausanne/lausanne")
+getwd()
 ```
 
 ## The data
@@ -16,8 +18,8 @@ The dataset consist of 500 single cells and expression measurements of 6148 diff
 The expression matrix is already normalized.
 ```{r}
 #Load the data
-load("/Users/dsesia/Desktop/Teaching/Clustering/Data/normalized_matrix.subset.RData")
-load("/Users/dsesia/Desktop/Teaching/Clustering/Data/cell_types.subset.RData")
+load("C:/Users/Kinga/OneDrive - Université de Lausanne/lausanne/ada/normalized_matrix.subset.RData")
+load("C:/Users/Kinga/OneDrive - Université de Lausanne/lausanne/ada/cell_types.subset.RData")
 ```
 
 We also have information about the cell type of each cell. In particular there are 7 different types of cells:
@@ -161,7 +163,7 @@ If you want more info on how the **cophenetic correlation coefficient** is compu
 
 # here I just saved the result of the above computation, since it takes a while! 
 #save(estim.r,file="/Users/dsesia/Desktop/Teaching/Dimensionality reduction/nmf_choose_r_2_10.RData")
-load(file="/Users/dsesia/Desktop/Teaching/Dimensionality reduction/nmf_choose_r_2_10.RData")
+load(file="C:/Users/Kinga/OneDrive - Université de Lausanne/lausanne/ada/nmf_choose_r_2_10.RData")
 ```
 
 ```{r}

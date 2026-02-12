@@ -118,126 +118,91 @@ rownames(diff_matrix) <- as.character(rownames(DosMat))
 colnames(diff_matrix) <- as.character(colnames(DosMat))
 
 # Loop over columns of DosMat (duplicated individuals included)
-# match SNPs that exist in both matrices - should be all
-# might not have to make common snp-s
-common_snps <- intersect(rownames(DosMat), rownames(real_gts))
 
-# sanity check 
-cat("\n--- SNP sanity: before diff_matrix ---\n")
-cat("common_snps head:", head(common_snps, 10), "\n")
-cat("common_snps tail:", tail(common_snps, 10), "\n")
+cat("\n--- SNP integrity check ---\n")
 
-stopifnot(identical(common_snps, rownames(DosMat)))
-# basically common snp-s should be all snp-s always
+# 1. Same number of SNPs
+stopifnot(nrow(DosMat) == nrow(real_gts))
 
-# are SNP names aligned exactly in order? not sure if this warning is correct
-if (!all(common_snps == rownames(real_gts)[match(common_snps, rownames(real_gts))])) {
-  warning("SNPs in DosMat and real_gts are NOT in the same order! Check alignment.")}
+# 2. and the same SNP IDs
+stopifnot(identical(as.character(rownames(DosMat)),as.character(rownames(real_gts))))
+cat("SNP sets identical and in the same order\n")
 
-# stop if wrong
-stopifnot(all(common_snps == rownames(real_gts)[match(common_snps, rownames(real_gts))]))
-
+# build dif matrix
 for (j in seq_len(ncol(DosMat))) {
   sample_id <- colnames(DosMat)[j]
-  # Only fill in if sample exists in real_gts - should be always
   if (sample_id %in% colnames(real_gts)) {
+    diff_matrix[, j] <- DosMat[, j] - real_gts[, sample_id] } 
+  else {warning("Sample ", sample_id, " not found in real_gts, leaving NA")}}
 
-    diff_matrix[common_snps, j] <- DosMat[common_snps, j] - real_gts[common_snps, sample_id]} else {
-    warning("Sample ", sample_id, " not found in real_gts, leaving NA") }}
-
-cat("dif matrix:", dim(diff_matrix), "\n")
-
-#  build the comparison dataframe safely
+#  build the comparison df safely
 comparison_df <- data.frame(scaffold_id = scaffold_id,
   SNP         = rep(rownames(DosMat), times = ncol(DosMat)),
   Sample      = rep(colnames(DosMat), each = nrow(DosMat)),
   Predicted   = as.vector(DosMat),
   Actual      = as.vector(DosMat - diff_matrix),  # get the actual values
+  # need to be weird about actual because of duplicate columns so dims dont match
   abs_dif     = as.vector(abs(diff_matrix)),
   stringsAsFactors = FALSE)
 
 # mean absolute difference
 mean_abs_dif <- mean(comparison_df$abs_dif, na.rm = TRUE)
+cat ("mean abs dif for this scaffold:", mean_abs_dif, "\n")
 
+# save
 write.csv(comparison_df, file = file.path(scaffold_dir_out_accuracy, paste0("comparison_long_df_", scaffold_id, ".csv")),
           row.names = FALSE)
 
-# comparison_df <- comparison_df_full %>% filter(!is.na(Predicted))
-comparison_df$abs_dif_subtract <- abs(comparison_df$Predicted - comparison_df$Actual)
-
-mean(comparison_df$abs_dif_subtract, na.rm = TRUE)
+# security check: the two ways of computing abs diff must agree
+stopifnot(all.equal(comparison_df$abs_dif,abs(comparison_df$Predicted - comparison_df$Actual),
+    tolerance = 1e-8))
 
 # sanity checks 
 cat("\n--- SNP sanity: NA rows in diff_matrix ---\n")
-
 na_rows <- which(rowSums(!is.na(diff_matrix)) == 0)
-
 cat("Number of all-NA SNPs:", length(na_rows), "\n")
-
 cat("First 10 all-NA SNPs:",
     rownames(diff_matrix)[na_rows][1:10], "\n")
-
 cat("Last 10 all-NA SNPs:",
     tail(rownames(diff_matrix)[na_rows], 10), "\n")
 
 # for comparison df
-
 cat("\n--- SNP sanity: comparison_df ---\n")
-
 cat("Unique SNPs in comparison_df:",
     length(unique(comparison_df$SNP)), "\n")
+stopifnot(all(levels(factor(comparison_df$SNP, levels = rownames(DosMat))) == rownames(DosMat)))
 
-stopifnot(identical(
-    sort(unique(comparison_df$SNP)),
-    as.character(pos)))
 
 
 # accuracy by snp-----
 
-
-# Explicitly preserve HDF5 order and IDs
 accuracy_by_snp <- comparison_df %>%
-  # Keep all SNPs from DosMat in original HDF5 order
-  mutate(SNP = factor(SNP, levels = rownames(DosMat))) %>%
-  group_by(SNP) %>%
-  summarise(
-    mean_abs_dif = mean(abs_dif, na.rm = TRUE),
-    n_non_na = sum(!is.na(abs_dif)),
-    .groups = "drop"
-  ) %>%
-  arrange(SNP)
-all(levels(accuracy_by_snp$SNP) == as.character(pos))
+  # preserve HDF5 order and ids (?)
+  group_by(SNP = factor(SNP, levels = rownames(DosMat))) %>%
+  summarise( mean_abs_dif = mean(abs_dif, na.rm = TRUE),
+    n_non_na = sum(!is.na(abs_dif)),.groups = "drop")
 
-
-# Preserve SNP order from DosMat
-accuracy_by_snp <- accuracy_by_snp %>%
-  mutate(SNP = factor(SNP, levels = rownames(DosMat))) %>%
-  arrange(SNP)
+# security checks
 stopifnot(all(levels(accuracy_by_snp$SNP) == rownames(DosMat)))
-
 
 cat("\n--- SNP sanity: accuracy_by_snp ---\n")
 
 cat("Total SNPs:", nrow(accuracy_by_snp), "\n")
-cat("NA mean_abs_dif:",
+cat(" how many NA in mean_abs_dif:",
     sum(is.na(accuracy_by_snp$mean_abs_dif)), "\n")
-
 cat("First 10 NA SNPs:",
     accuracy_by_snp$SNP[is.na(accuracy_by_snp$mean_abs_dif)][1:10], "\n")
 
-# Save CSV for this scaffold
-write.csv(accuracy_by_snp,
-          file = file.path(scaffold_dir_out_accuracy, paste0("accuracy_by_snp_", scaffold_id, ".csv")),
-          row.names = FALSE)
+# save CSV for this scaffold
+write.csv(accuracy_by_snp,file = file.path(scaffold_dir_out_accuracy, 
+paste0("accuracy_by_snp_", scaffold_id, ".csv")),row.names = FALSE)
 
-accuracy_by_snp <- accuracy_by_snp %>%arrange(SNP)
 
-plot_snp_accuracy <- ggplot(accuracy_by_snp,
-                            aes(x = SNP, y = mean_abs_dif)) +
+plot_snp_accuracy <- ggplot(accuracy_by_snp, aes(x = SNP, y = mean_abs_dif)) +
   geom_point(size = 0.6, alpha = 0.8) +
   theme_classic() +
-  labs(title = paste0("SNP-wise mean imputation error: ", scaffold_id),
-    x = "SNP position",
+  labs(title = paste0("SNP-wise mean absolute error: ", scaffold_id),
+    x = "Position",
     y = "Mean absolute difference") +
   coord_cartesian(ylim = c(0, max(accuracy_by_snp$mean_abs_dif, na.rm = TRUE))) +
   theme(axis.text.x = element_blank())
@@ -249,17 +214,15 @@ accuracy_by_ind <- comparison_df %>%
     .groups = "drop")
 
 # Save CSV
-write.csv(accuracy_by_ind,
-          file = file.path(scaffold_dir_out_accuracy, paste0("accuracy_by_individual_", scaffold_id, ".csv")),
-          row.names = FALSE)
-
+write.csv(accuracy_by_ind,file = file.path(scaffold_dir_out_accuracy,
+paste0("accuracy_by_individual_", scaffold_id, ".csv")),row.names = FALSE)
 
 plot_ind_accuracy <- ggplot(accuracy_by_ind, aes(x = Sample, y = mean_abs_dif)) +
   geom_bar(stat = "identity") +
   theme_classic() +
   labs(title = paste0("Individual-wise mean accuracy: ", scaffold_id),
-       x = "Sample",y = "Mean Absolute Difference") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+       x = "Individual",y = "Mean Absolute Difference") +
+  theme(axis.text.x = element_blank())
 ggsave(filename = file.path(scaffold_dir_out_accuracy, paste0("individual_accuracy_", scaffold_id, ".png")),
        plot = plot_ind_accuracy,
        dpi = 300,width = 8,height = 4)
@@ -272,7 +235,6 @@ scaffold_summary <- comparison_df %>%
             n_snps = n_distinct(SNP),n_samples = n_distinct(Sample))
 
 # Save CSV
-write.csv(scaffold_summary,
-          file = file.path(out_accuracy_dir, paste0("scaffold_summary_", scaffold_id, ".csv")),
-          row.names = FALSE)
+write.csv(scaffold_summary,file = file.path(out_accuracy_dir, paste0("scaffold_summary_", scaffold_id, ".csv")),
+row.names = FALSE)
 
